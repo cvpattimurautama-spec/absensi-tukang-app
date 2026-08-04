@@ -1,0 +1,48 @@
+rules_version = '2';
+
+// ============================================================
+// ABSENSI TUKANG - Aturan Keamanan Firestore
+// ============================================================
+// Cara pakai: buka Firebase Console -> Firestore Database -> Rules,
+// hapus semua isinya, tempel seluruh isi file ini, klik "Publish".
+//
+// CATATAN KEAMANAN (penting dibaca):
+// Aplikasi ini memakai sistem login sendiri (username/password disimpan
+// di koleksi "users", bukan Firebase Authentication). Karena itu, aturan
+// di bawah TIDAK bisa membedakan siapa yang sedang login di level
+// database - siapa pun yang tahu kredensial Firebase (VITE_FIREBASE_...)
+// yang memang tertanam di kode frontend bisa membaca/menulis data
+// langsung lewat API Firebase, bahkan tanpa lewat halaman login aplikasi.
+//
+// Ini cukup aman untuk PENGGUNAAN INTERNAL TIM KECIL yang saling
+// percaya, BUKAN untuk aplikasi publik atau data sangat sensitif.
+// ============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Koleksi "users" (kredensial login) - hanya boleh dibaca/ditulis
+    // dari dalam aplikasi ini. Password sudah di-hash (bcrypt) sebelum
+    // disimpan, jadi walau koleksi ini "terbaca", isinya bukan password asli.
+    match /users/{userId} {
+      allow read, write: if true;
+    }
+
+    // Semua data utama aplikasi
+    match /workers/{docId} { allow read, write: if true; }
+    match /projects/{docId} { allow read, write: if true; }
+    match /weeks/{docId} { allow read, write: if true; }
+    match /evidence/{docId} { allow read, write: if true; }
+    match /payments/{docId} { allow read, write: if true; }
+    match /kasbon/{docId} { allow read, write: if true; }
+    match /kasbonPayments/{docId} { allow read, write: if true; }
+    match /materials/{docId} { allow read, write: if true; }
+    match /suppliers/{docId} { allow read, write: if true; }
+    match /purchases/{docId} { allow read, write: if true; }
+    match /usage/{docId} { allow read, write: if true; }
+    match /utangPayments/{docId} { allow read, write: if true; }
+    match /peralatan/{docId} { allow read, write: if true; }
+    match /peralatanUsage/{docId} { allow read, write: if true; }
+    match /companyProfile/{docId} { allow read, write: if true; }
+  }
+}
