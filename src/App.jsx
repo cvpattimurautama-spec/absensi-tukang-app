@@ -3397,6 +3397,23 @@ export default function App() {
     }
   }, []);
 
+  // Bootstrap: buat user admin default kalau koleksi users masih kosong.
+  // Ini WAJIB jalan sebelum login (bukan sesudahnya), karena login pertama
+  // butuh setidaknya satu user sudah ada di Firestore.
+  useEffect(() => {
+    (async () => {
+      try {
+        const rows = await fetchAll('users');
+        if (rows.length === 0) {
+          const hash = await bcrypt.hash('admin123', 10);
+          await setDoc(doc(db, 'users', uid()), { username: 'admin', passwordHash: hash });
+        }
+      } catch (err) {
+        console.error('Gagal bootstrap user admin default:', err.message);
+      }
+    })();
+  }, []);
+
   const loadAppUsers = useCallback(async () => {
     try {
       const rows = await fetchAll('users');
