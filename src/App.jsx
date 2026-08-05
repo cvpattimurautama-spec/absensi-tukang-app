@@ -7,7 +7,7 @@ import {
 import bcrypt from 'bcryptjs';
 import {
   LogIn, Loader2, AlertTriangle, Users, Plus, Trash2, Wallet,
-  Camera, MapPin, ChevronDown, ChevronUp, Check, X, CalendarDays, Edit3, Printer, Receipt, Copy, Save, Banknote, ShoppingCart, Warehouse, FileBarChart, LayoutDashboard, Bluetooth
+  Camera, MapPin, ChevronDown, ChevronUp, Check, X, CalendarDays, Edit3, Printer, Receipt, Copy, Save, Banknote, ShoppingCart, Warehouse, FileBarChart, LayoutDashboard, Bluetooth, Video, RefreshCw
 } from 'lucide-react';
 
 const THEME = {
@@ -44,6 +44,19 @@ const COMPANY_LOGO_DATA_URI = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAA
 
 let CURRENT_COMPANY = { name: '', address: '', phone: '', tagline: '' };
 
+const DEFAULT_COMPANY_SERVICES = [
+  'Jasa Konstruksi',
+  'Jasa Transportasi',
+  'Jasa Cor Beton',
+  'Jasa Penyewaan Alat Konstruksi / Alat Berat',
+  'Jasa Pengelasan, CNC Cutting, CNC Router',
+  'Industri Kreatif',
+  'Perdagangan Besar dan Eceran',
+].join('\n');
+
+const DEFAULT_COMPANY_MATERIALS_NOTE = 'Melayani pembelian Pasir, Batu Split semua ukuran, Batu Gunung, Krokos, dan material lainnya.';
+
+
 function companyHeaderText() {
   if (!CURRENT_COMPANY.name) return '';
   const lines = [CURRENT_COMPANY.name];
@@ -55,7 +68,7 @@ function companyHeaderText() {
 
 function companyHeaderHtml() {
   return `<div style="text-align:center;border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:10px;">
-    <img src="${COMPANY_LOGO_DATA_URI}" alt="Logo" style="width:56px;height:56px;object-fit:cover;border-radius:6px;margin:0 auto 4px;display:block;" />
+    <img src="${CURRENT_COMPANY.logoDataUri || COMPANY_LOGO_DATA_URI}" alt="Logo" style="width:56px;height:56px;object-fit:cover;border-radius:6px;margin:0 auto 4px;display:block;" />
     ${CURRENT_COMPANY.name ? `<div style="font-weight:700;font-size:1.15em;">${CURRENT_COMPANY.name}</div>` : ''}
     ${CURRENT_COMPANY.tagline ? `<div style="font-size:0.85em;">${CURRENT_COMPANY.tagline}</div>` : ''}
     ${CURRENT_COMPANY.address ? `<div style="font-size:0.8em;">${CURRENT_COMPANY.address}</div>` : ''}
@@ -77,7 +90,27 @@ function formatRupiah(n) {
   return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(n || 0);
 }
 
-function resizeImage(file, maxWidth = 480, quality = 0.7) {
+function terbilang(n) {
+  const satuan = ['', 'Satu', 'Dua', 'Tiga', 'Empat', 'Lima', 'Enam', 'Tujuh', 'Delapan', 'Sembilan', 'Sepuluh',
+    'Sebelas', 'Dua Belas', 'Tiga Belas', 'Empat Belas', 'Lima Belas', 'Enam Belas', 'Tujuh Belas', 'Delapan Belas', 'Sembilan Belas'];
+  function convert(num) {
+    num = Math.floor(num);
+    if (num < 20) return satuan[num];
+    if (num < 100) return `${satuan[Math.floor(num / 10)]} Puluh${num % 10 ? ' ' + satuan[num % 10] : ''}`;
+    if (num < 200) return `Seratus${num % 100 ? ' ' + convert(num % 100) : ''}`;
+    if (num < 1000) return `${satuan[Math.floor(num / 100)]} Ratus${num % 100 ? ' ' + convert(num % 100) : ''}`;
+    if (num < 2000) return `Seribu${num % 1000 ? ' ' + convert(num % 1000) : ''}`;
+    if (num < 1000000) return `${convert(Math.floor(num / 1000))} Ribu${num % 1000 ? ' ' + convert(num % 1000) : ''}`;
+    if (num < 1000000000) return `${convert(Math.floor(num / 1000000))} Juta${num % 1000000 ? ' ' + convert(num % 1000000) : ''}`;
+    if (num < 1000000000000) return `${convert(Math.floor(num / 1000000000))} Miliar${num % 1000000000 ? ' ' + convert(num % 1000000000) : ''}`;
+    return `${convert(Math.floor(num / 1000000000000))} Triliun${num % 1000000000000 ? ' ' + convert(num % 1000000000000) : ''}`;
+  }
+  const val = Math.round(Number(n) || 0);
+  if (val === 0) return 'Nol Rupiah';
+  return `${convert(val)} Rupiah`.replace(/\s+/g, ' ').trim();
+}
+
+function resizeImage(file, maxWidth = 360, quality = 0.55) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('Gagal membaca file'));
@@ -310,6 +343,68 @@ function buildPekerjaHtml(workers, thermal) {
     <th>Upah Harian (Rp)</th><th>Upah Lembur/Jam (Rp)</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
+function idCardHtml(w) {
+  const logo = CURRENT_COMPANY.logoDataUri || COMPANY_LOGO_DATA_URI;
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>ID Card - ${escapeHtml(w.name)}</title>
+<style>
+  @page { size: 340px 540px; margin: 0; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: 'Arial', sans-serif; }
+  .card { width: 340px; height: 540px; background: #FAF8F1; position: relative; overflow: hidden; border: 1px solid #DDD5BE; }
+  .head { background: #0D1930; color: #F2ECD9; padding: 18px 16px 14px; text-align: center; border-bottom: 4px solid #C9A227; }
+  .head img { width: 42px; height: 42px; object-fit: cover; border-radius: 8px; margin: 0 auto 6px; display: block; border: 1px solid #C9A227; }
+  .head .cname { font-weight: 800; font-size: 15px; letter-spacing: 0.02em; }
+  .head .ctag { font-size: 8px; color: #C9A227; margin-top: 3px; letter-spacing: 0.06em; text-transform: uppercase; }
+  .photo-wrap { text-align: center; margin-top: 22px; }
+  .photo { width: 140px; height: 140px; border-radius: 10px; object-fit: cover; border: 3px solid #C9A227; margin: 0 auto; display: block; background: #EFE9D8; }
+  .name { text-align: center; font-weight: 800; font-size: 17px; color: #0D1930; margin-top: 14px; padding: 0 12px; }
+  .pos { text-align: center; font-size: 11px; color: #C9A227; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
+  .divider { width: 60px; height: 2px; background: #C9A227; margin: 12px auto; }
+  .info { padding: 0 24px; font-size: 10.5px; color: #14213D; }
+  .info .row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #DDD5BE; }
+  .info .lbl { color: #5B6478; }
+  .info .val { font-weight: 700; }
+  .foot { position: absolute; bottom: 0; left: 0; right: 0; background: #0D1930; color: #C9A227; font-size: 8px; text-align: center; padding: 8px; letter-spacing: 0.03em; }
+  .noprint { text-align: center; padding: 10px; }
+</style>
+</head><body>
+  <div class="card">
+    <div class="head">
+      <img src="${logo}" alt="Logo" />
+      <div class="cname">${escapeHtml(CURRENT_COMPANY.name || 'ABSENSI TUKANG')}</div>
+      ${CURRENT_COMPANY.tagline ? `<div class="ctag">${escapeHtml(CURRENT_COMPANY.tagline)}</div>` : ''}
+    </div>
+    <div class="photo-wrap">
+      ${w.photoDataUri ? `<img class="photo" src="${w.photoDataUri}" alt="${escapeHtml(w.name)}" />` : `<div class="photo"></div>`}
+    </div>
+    <div class="name">${escapeHtml(w.name)}</div>
+    <div class="pos">${escapeHtml(w.position || '-')}</div>
+    <div class="divider"></div>
+    <div class="info">
+      ${w.joinDate ? `<div class="row"><span class="lbl">Bergabung</span><span class="val">${escapeHtml(w.joinDate)}</span></div>` : ''}
+      ${w.phone ? `<div class="row"><span class="lbl">No. HP</span><span class="val">${escapeHtml(w.phone)}</span></div>` : ''}
+      ${w.ktp ? `<div class="row"><span class="lbl">No. KTP</span><span class="val">${escapeHtml(w.ktp)}</span></div>` : ''}
+    </div>
+    <div class="foot">${escapeHtml(CURRENT_COMPANY.website || CURRENT_COMPANY.phone || '')}</div>
+  </div>
+  <script>window.onload = function () { setTimeout(function () { window.print(); }, 250); };</script>
+</body></html>`;
+}
+
+function openIdCardPrint(worker) {
+  try {
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.write(idCardHtml(worker));
+      win.document.close();
+      return;
+    }
+  } catch (err) {
+    console.error('Gagal membuka ID card:', err);
+  }
+  alert('Gagal membuka jendela cetak. Pastikan pop-up tidak diblokir browser.');
+}
+
 function statusChar(rec) {
   const s = dayStatus(rec);
   if (s === 'full') return 'H' + (rec.lembur ? '+' + rec.lembur + 'j' : '');
@@ -488,7 +583,7 @@ function buildRekapText(rows, grand) {
 }
 
 function buildSlipGajiText(row, filterLabel) {
-  const { worker, totalUpah, totalHari, totalJamLembur, diterima, totalKasbon, sisa, workerPayments, workerKasbon, workerKasbonPayments, weekBreakdown } = row;
+  const { worker, totalUpah, totalHari, totalJamLembur, diterima, totalKasbon, sisa, workerPayments, workerKasbon, workerKasbonPayments, weekBreakdown, evidenceFilled, evidenceExpected } = row;
   const lines = [
     'SLIP GAJI', '================================',
     `Nama       : ${worker.name}`,
@@ -506,6 +601,7 @@ function buildSlipGajiText(row, filterLabel) {
   lines.push('--------------------------------');
   lines.push(`Total Hari Kerja   : ${totalHari}`);
   lines.push(`Total Jam Lembur   : ${totalJamLembur}`);
+  if (evidenceExpected > 0) lines.push(`Bukti Foto Kehadiran: ${evidenceFilled}/${evidenceExpected} periode terisi`);
   lines.push(`TOTAL UPAH         : ${formatRupiah(totalUpah)}`);
   lines.push('');
   lines.push('POTONGAN & PEMBAYARAN');
@@ -523,7 +619,7 @@ function buildSlipGajiText(row, filterLabel) {
 }
 
 function buildSlipGajiHtml(row, filterLabel, thermal) {
-  const { worker, totalUpah, totalHari, totalJamLembur, diterima, totalKasbon, sisa, workerPayments, workerKasbon, workerKasbonPayments, weekBreakdown } = row;
+  const { worker, totalUpah, totalHari, totalJamLembur, diterima, totalKasbon, sisa, workerPayments, workerKasbon, workerKasbonPayments, weekBreakdown, evidenceFilled, evidenceExpected } = row;
   const workRows = weekBreakdown.map((wk) => `<tr><td>${escapeHtml(wk.weekLabel)}</td><td>${escapeHtml(wk.projectName)}</td><td>${escapeHtml(wk.startDate)} s/d ${escapeHtml(wk.endDate)}</td><td>${wk.totalHariBayar}</td><td>${wk.totalJamLembur}</td><td>${formatRupiah(wk.totalUpah)}</td></tr>`).join('');
   return `<h2>SLIP GAJI</h2>
     <p><b>${escapeHtml(worker.name)}</b> &nbsp; ${escapeHtml(worker.position || '-')}</p>
@@ -531,6 +627,7 @@ function buildSlipGajiHtml(row, filterLabel, thermal) {
     <table><thead><tr><th>Periode</th><th>Proyek</th><th>Tanggal</th><th>Hari</th><th>Jam Lembur</th><th>Upah</th></tr></thead>
     <tbody>${workRows}</tbody>
     <tfoot><tr class="bold"><td colspan="3">TOTAL</td><td>${totalHari}</td><td>${totalJamLembur}</td><td>${formatRupiah(totalUpah)}</td></tr></tfoot></table>
+    ${evidenceExpected > 0 ? `<p style="margin-top:6px;">Bukti Foto Kehadiran: <b>${evidenceFilled}/${evidenceExpected}</b> periode terisi</p>` : ''}
     <p style="margin-top:10px;"><b>Kasbon &amp; Pembayaran</b></p>
     <table><tbody>
       ${workerKasbon.map((k) => `<tr><td>Kasbon ${escapeHtml(k.date)}</td><td>${formatRupiah(k.amount)}</td></tr>`).join('')}
@@ -664,22 +761,65 @@ function CompanyProfileModal({ company, onSave, onClose }) {
   const [tagline, setTagline] = useState(company.tagline || '');
   const [address, setAddress] = useState(company.address || '');
   const [phone, setPhone] = useState(company.phone || '');
+  const [website, setWebsite] = useState(company.website || '');
+  const [email, setEmail] = useState(company.email || '');
+  const [services, setServices] = useState(company.services || DEFAULT_COMPANY_SERVICES);
+  const [materialsNote, setMaterialsNote] = useState(company.materialsNote || DEFAULT_COMPANY_MATERIALS_NOTE);
+  const [logoDataUri, setLogoDataUri] = useState(company.logoDataUri || '');
+  const [logoBusy, setLogoBusy] = useState(false);
+
+  const handleLogoFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLogoBusy(true);
+    try {
+      const dataUri = await resizeImage(file, 200, 0.7); // logo: kecil saja, cukup untuk kop dokumen
+      setLogoDataUri(dataUri);
+    } catch {
+      alert('Gagal memuat logo. Coba foto/gambar lain.');
+    }
+    setLogoBusy(false);
+    e.target.value = '';
+  };
 
   const handleSave = async () => {
-    await onSave({ name: name.trim(), tagline: tagline.trim(), address: address.trim(), phone: phone.trim() });
+    await onSave({
+      name: name.trim(), tagline: tagline.trim(), address: address.trim(), phone: phone.trim(),
+      website: website.trim(), email: email.trim(), services: services.trim(), materialsNote: materialsNote.trim(),
+      logoDataUri,
+    });
     onClose();
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4" style={{ background: 'rgba(33,29,26,0.7)' }}>
-      <div className="w-full max-w-sm rounded-xl p-4 att-body att-punch-anim" style={{ background: THEME.paper }}>
+      <div className="w-full max-w-sm rounded-xl p-4 att-body att-punch-anim max-h-[90vh] overflow-y-auto" style={{ background: THEME.paper }}>
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-bold text-sm" style={{ color: THEME.ink }}>Profil Perusahaan</h3>
           <button type="button" onClick={onClose}><X size={18} color={THEME.inkSoft} /></button>
         </div>
         <p className="att-mono text-[10px] mb-3" style={{ color: THEME.inkSoft }}>
-          Muncul di judul aplikasi dan sebagai kop di setiap dokumen cetak/struk/salin teks.
+          Muncul di judul aplikasi dan sebagai kop di setiap dokumen cetak/struk/PDF/ID card.
         </p>
+
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-16 h-16 rounded-lg overflow-hidden flex items-center justify-center shrink-0" style={{ background: THEME.concrete, border: `1px solid ${THEME.line}` }}>
+            {logoDataUri
+              ? <img src={logoDataUri} alt="Logo" className="w-full h-full object-cover" />
+              : <img src={COMPANY_LOGO_DATA_URI} alt="Logo bawaan" className="w-full h-full object-cover opacity-40" />}
+          </div>
+          <div className="flex-1">
+            <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded att-mono text-xs font-semibold cursor-pointer"
+              style={{ border: `1px solid ${THEME.amber}`, color: THEME.charcoal, background: THEME.amber }}>
+              {logoBusy ? 'Memuat...' : 'Ganti Logo'}
+              <input type="file" accept="image/*" className="hidden" onChange={handleLogoFile} disabled={logoBusy} />
+            </label>
+            {logoDataUri && (
+              <button type="button" onClick={() => setLogoDataUri('')} className="block mt-1 att-mono text-[10px]" style={{ color: THEME.rust }}>Hapus logo, pakai bawaan</button>
+            )}
+          </div>
+        </div>
+
         <div className="space-y-2">
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nama perusahaan"
             className="w-full px-3 py-2 rounded att-body text-sm outline-none" style={{ background: THEME.concrete, color: THEME.ink }} />
@@ -689,6 +829,20 @@ function CompanyProfileModal({ company, onSave, onClose }) {
             className="w-full px-3 py-2 rounded att-body text-sm outline-none" style={{ background: THEME.concrete, color: THEME.ink }} />
           <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="No. Telepon"
             className="w-full px-3 py-2 rounded att-body text-sm outline-none" style={{ background: THEME.concrete, color: THEME.ink }} />
+          <input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="Website (contoh: pattimurautama.com)"
+            className="w-full px-3 py-2 rounded att-body text-sm outline-none" style={{ background: THEME.concrete, color: THEME.ink }} />
+          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email perusahaan"
+            className="w-full px-3 py-2 rounded att-body text-sm outline-none" style={{ background: THEME.concrete, color: THEME.ink }} />
+          <div>
+            <p className="att-mono text-[10px] mb-1" style={{ color: THEME.inkSoft }}>Layanan (1 baris = 1 layanan)</p>
+            <textarea value={services} onChange={(e) => setServices(e.target.value)} rows={7}
+              className="w-full px-3 py-2 rounded att-body text-xs outline-none" style={{ background: THEME.concrete, color: THEME.ink }} />
+          </div>
+          <div>
+            <p className="att-mono text-[10px] mb-1" style={{ color: THEME.inkSoft }}>Catatan tambahan (opsional)</p>
+            <textarea value={materialsNote} onChange={(e) => setMaterialsNote(e.target.value)} rows={2}
+              className="w-full px-3 py-2 rounded att-body text-xs outline-none" style={{ background: THEME.concrete, color: THEME.ink }} />
+          </div>
         </div>
         <button type="button" onClick={handleSave}
           className="w-full mt-3 flex items-center justify-center gap-1.5 py-2 rounded att-body font-semibold text-sm"
@@ -796,7 +950,7 @@ function TopBar({ onLogout, onBackup, onProfile, onManageUsers, company, usernam
   return (
     <div className="flex items-center justify-between px-5 py-4 sticky top-0 z-10" style={{ background: THEME.charcoal }}>
       <div className="flex items-center gap-2 min-w-0">
-        <img src={COMPANY_LOGO_DATA_URI} alt="Logo" className="w-9 h-9 rounded object-cover shrink-0" style={{ border: `1px solid ${THEME.line}` }} />
+        <img src={company?.logoDataUri || COMPANY_LOGO_DATA_URI} alt="Logo" className="w-9 h-9 rounded object-cover shrink-0" style={{ border: `1px solid ${THEME.line}` }} />
         <div className="min-w-0">
           <p className="att-display text-sm leading-none truncate" style={{ color: THEME.paper }}>{company?.name || 'ABSENSI TUKANG'}</p>
           <p className="att-mono text-[10px] mt-0.5" style={{ color: '#9C948A' }}>{username ? `Login: ${username}` : 'ADMIN'}</p>
@@ -890,6 +1044,11 @@ function TabBar({ tab, setTab }) {
     { id: 'gudang', label: 'Gudang', icon: Warehouse },
     { id: 'rekap', label: 'Rekap Upah', icon: Wallet },
     { id: 'proyek', label: 'Rekap Proyek', icon: FileBarChart },
+    { id: 'progres', label: 'Progres Proyek', icon: Camera },
+    { id: 'penawaran', label: 'Penawaran', icon: Receipt },
+    { id: 'klien', label: 'Data Klien', icon: Users },
+    { id: 'ahsp', label: 'AHSP Master', icon: FileBarChart },
+    { id: 'klien', label: 'Data Klien', icon: Users },
   ];
   return (
     <div className="flex gap-1 px-3 pt-3 pb-2 att-scroll overflow-x-auto" style={{ background: THEME.charcoal }}>
@@ -917,7 +1076,7 @@ function TabBar({ tab, setTab }) {
 /* ---------------- Data Pekerja ---------------- */
 
 function emptyForm() {
-  return { name: '', address: '', position: '', phone: '', ktp: '', upahHarian: '', upahLembur: '' };
+  return { name: '', address: '', position: '', phone: '', ktp: '', upahHarian: '', upahLembur: '', joinDate: '', photoDataUri: '' };
 }
 
 function DataPekerjaTab({ workers, onAdd, onUpdate, onDelete }) {
@@ -927,6 +1086,22 @@ function DataPekerjaTab({ workers, onAdd, onUpdate, onDelete }) {
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [showTextPreview, setShowTextPreview] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [idCardFor, setIdCardFor] = useState(null); // worker sedang buka menu cetak ID card
+
+  const handlePhotoFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPhotoBusy(true);
+    try {
+      const dataUri = await resizeImage(file, 320, 0.6); // foto pekerja: cukup untuk ID card & daftar
+      setForm((f) => ({ ...f, photoDataUri: dataUri }));
+    } catch {
+      alert('Gagal memuat foto. Coba foto lain.');
+    }
+    setPhotoBusy(false);
+    e.target.value = '';
+  };
 
   const startEdit = (w) => {
     setEditingId(w.id);
@@ -934,6 +1109,7 @@ function DataPekerjaTab({ workers, onAdd, onUpdate, onDelete }) {
       name: w.name || '', address: w.address || '', position: w.position || '',
       phone: w.phone || '', ktp: w.ktp || '',
       upahHarian: String(w.upahHarian ?? ''), upahLembur: String(w.upahLembur ?? ''),
+      joinDate: w.joinDate || '', photoDataUri: w.photoDataUri || '',
     });
   };
 
@@ -958,6 +1134,8 @@ function DataPekerjaTab({ workers, onAdd, onUpdate, onDelete }) {
       ktp: form.ktp.trim(),
       upahHarian: Number(form.upahHarian) || 0,
       upahLembur: Number(form.upahLembur) || 0,
+      joinDate: form.joinDate,
+      photoDataUri: form.photoDataUri,
     };
     if (editingId) {
       await onUpdate(editingId, payload);
@@ -984,6 +1162,23 @@ function DataPekerjaTab({ workers, onAdd, onUpdate, onDelete }) {
         <p className="att-body font-semibold text-sm mb-3" style={{ color: THEME.ink }}>
           {editingId ? 'Edit Pekerja' : 'Tambah Pekerja Baru'}
         </p>
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-16 h-16 rounded-lg overflow-hidden flex items-center justify-center shrink-0" style={{ background: THEME.concrete, border: `1px solid ${THEME.line}` }}>
+            {form.photoDataUri
+              ? <img src={form.photoDataUri} alt="Foto pekerja" className="w-full h-full object-cover" />
+              : <Users size={22} color={THEME.inkSoft} />}
+          </div>
+          <div className="flex-1">
+            <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded att-mono text-xs font-semibold cursor-pointer"
+              style={{ border: `1px solid ${THEME.line}`, color: THEME.ink, background: THEME.concrete }}>
+              {photoBusy ? 'Memuat...' : 'Pilih Foto'}
+              <input type="file" accept="image/*" className="hidden" onChange={handlePhotoFile} disabled={photoBusy} />
+            </label>
+            {form.photoDataUri && (
+              <button type="button" onClick={() => setForm((f) => ({ ...f, photoDataUri: '' }))} className="block mt-1 att-mono text-[10px]" style={{ color: THEME.rust }}>Hapus foto</button>
+            )}
+          </div>
+        </div>
         <div className="grid sm:grid-cols-2 gap-3">
           <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
             placeholder="Nama lengkap" className="px-3 py-2 rounded att-body text-sm outline-none" style={{ background: THEME.concrete, color: THEME.ink }} />
@@ -995,6 +1190,11 @@ function DataPekerjaTab({ workers, onAdd, onUpdate, onDelete }) {
             placeholder="No. HP" className="px-3 py-2 rounded att-body text-sm outline-none" style={{ background: THEME.concrete, color: THEME.ink }} />
           <input value={form.ktp} onChange={(e) => setForm({ ...form, ktp: e.target.value })}
             placeholder="No. KTP" className="px-3 py-2 rounded att-body text-sm outline-none" style={{ background: THEME.concrete, color: THEME.ink }} />
+          <div>
+            <p className="att-mono text-[10px] mb-1" style={{ color: THEME.inkSoft }}>Tanggal Bergabung</p>
+            <input type="date" value={form.joinDate} onChange={(e) => setForm({ ...form, joinDate: e.target.value })}
+              className="w-full px-3 py-2 rounded att-body text-sm outline-none" style={{ background: THEME.concrete, color: THEME.ink }} />
+          </div>
           <input value={form.upahHarian} onChange={(e) => setForm({ ...form, upahHarian: e.target.value.replace(/[^0-9]/g, '') })}
             placeholder="Upah harian (Rp)" inputMode="numeric" className="px-3 py-2 rounded att-body text-sm outline-none" style={{ background: THEME.concrete, color: THEME.ink }} />
           <input value={form.upahLembur} onChange={(e) => setForm({ ...form, upahLembur: e.target.value.replace(/[^0-9]/g, '') })}
@@ -1018,26 +1218,57 @@ function DataPekerjaTab({ workers, onAdd, onUpdate, onDelete }) {
 
       <div className="space-y-2">
         {workers.map((w) => (
-          <div key={w.id} className="p-3 rounded-lg flex items-start justify-between gap-2" style={{ background: THEME.paper, border: `1px solid ${THEME.line}` }}>
-            <div className="min-w-0">
-              <p className="att-body font-semibold text-sm" style={{ color: THEME.ink }}>{w.name}</p>
-              <p className="att-mono text-xs" style={{ color: THEME.inkSoft }}>{w.position || '-'}</p>
-              <p className="att-mono text-xs mt-1" style={{ color: THEME.inkSoft }}>
-                Harian {formatRupiah(w.upahHarian)} &middot; Lembur {formatRupiah(w.upahLembur)}/jam
-              </p>
+          <div key={w.id} className="p-3 rounded-lg" style={{ background: THEME.paper, border: `1px solid ${THEME.line}` }}>
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-start gap-2.5 min-w-0">
+                <div className="w-11 h-11 rounded-lg overflow-hidden shrink-0 flex items-center justify-center" style={{ background: THEME.concrete, border: `1px solid ${THEME.line}` }}>
+                  {w.photoDataUri
+                    ? <img src={w.photoDataUri} alt={w.name} className="w-full h-full object-cover" />
+                    : <Users size={18} color={THEME.inkSoft} />}
+                </div>
+                <div className="min-w-0">
+                  <p className="att-body font-semibold text-sm" style={{ color: THEME.ink }}>{w.name}</p>
+                  <p className="att-mono text-xs" style={{ color: THEME.inkSoft }}>{w.position || '-'}</p>
+                  <p className="att-mono text-xs mt-1" style={{ color: THEME.inkSoft }}>
+                    Harian {formatRupiah(w.upahHarian)} &middot; Lembur {formatRupiah(w.upahLembur)}/jam
+                  </p>
+                  {w.joinDate && (
+                    <p className="att-mono text-[11px] mt-0.5" style={{ color: THEME.inkSoft }}>Bergabung: {w.joinDate}</p>
+                  )}
+                </div>
+              </div>
+              <div className="flex gap-1 shrink-0">
+                <button type="button" onClick={() => startEdit(w)} className="p-2 rounded" style={{ background: THEME.concrete }}>
+                  <Edit3 size={14} color={THEME.inkSoft} />
+                </button>
+                {confirmDelete === w.id ? (
+                  <button type="button" onClick={() => { onDelete(w.id); setConfirmDelete(null); }} className="p-2 rounded" style={{ background: THEME.rust }}>
+                    <Check size={14} color={THEME.paper} />
+                  </button>
+                ) : (
+                  <button type="button" onClick={() => setConfirmDelete(w.id)} className="p-2 rounded" style={{ background: THEME.concrete }}>
+                    <Trash2 size={14} color={THEME.rust} />
+                  </button>
+                )}
+              </div>
             </div>
-            <div className="flex gap-1 shrink-0">
-              <button type="button" onClick={() => startEdit(w)} className="p-2 rounded" style={{ background: THEME.concrete }}>
-                <Edit3 size={14} color={THEME.inkSoft} />
+            <div className="flex items-center gap-1.5 mt-2">
+              <button type="button" onClick={() => setIdCardFor(idCardFor === w.id ? null : w.id)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded att-mono text-[11px] font-semibold"
+                style={{ border: `1px solid ${THEME.line}`, color: THEME.ink, background: THEME.concrete }}>
+                <Receipt size={12} /> ID Card
               </button>
-              {confirmDelete === w.id ? (
-                <button type="button" onClick={() => { onDelete(w.id); setConfirmDelete(null); }} className="p-2 rounded" style={{ background: THEME.rust }}>
-                  <Check size={14} color={THEME.paper} />
-                </button>
-              ) : (
-                <button type="button" onClick={() => setConfirmDelete(w.id)} className="p-2 rounded" style={{ background: THEME.concrete }}>
-                  <Trash2 size={14} color={THEME.rust} />
-                </button>
+              {idCardFor === w.id && (
+                <>
+                  <button type="button" onClick={() => exportIdCardPDF(w)}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded att-mono text-[11px] font-semibold" style={{ border: `1px solid ${THEME.line}`, color: THEME.ink, background: THEME.paper }}>
+                    <Save size={12} /> PDF
+                  </button>
+                  <button type="button" onClick={() => openIdCardPrint(w)}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded att-mono text-[11px] font-semibold" style={{ border: `1px solid ${THEME.line}`, color: THEME.ink, background: THEME.paper }}>
+                    <Printer size={12} /> Cetak
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -1052,11 +1283,25 @@ function DataPekerjaTab({ workers, onAdd, onUpdate, onDelete }) {
 
 /* ---------------- Evidence Modal (GPS + Foto) ---------------- */
 
+const EVIDENCE_PERIODS = [
+  { key: 'pagi', label: 'Pagi' },
+  { key: 'siang', label: 'Siang' },
+  { key: 'sore', label: 'Sore' },
+  { key: 'lembur', label: 'Lembur' },
+];
+
+function nowTimeLabel() {
+  const d = new Date();
+  return `${d.toLocaleDateString('id-ID')} ${d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
+}
+
 function EvidenceModal({ onSave, onCancel, existing }) {
   const [geoState, setGeoState] = useState('idle');
   const [coords, setCoords] = useState(existing ? { lat: existing.lat, lng: existing.lng } : null);
-  const [photo, setPhoto] = useState(existing ? existing.photo : null);
+  const [periods, setPeriods] = useState(existing?.periods || {});
+  const [activePeriod, setActivePeriod] = useState('pagi');
   const [saving, setSaving] = useState(false);
+  const [busyPeriod, setBusyPeriod] = useState(null);
 
   const captureLocation = () => {
     setGeoState('loading');
@@ -1074,46 +1319,109 @@ function EvidenceModal({ onSave, onCancel, existing }) {
     );
   };
 
-  const onFile = async (e) => {
+  const onFile = async (e, periodKey) => {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
+    setBusyPeriod(periodKey);
     try {
       const dataUrl = await resizeImage(file);
-      setPhoto(dataUrl);
+      setPeriods((prev) => ({ ...prev, [periodKey]: { photo: dataUrl, time: nowTimeLabel() } }));
     } catch {
-      setPhoto(null);
+      alert('Gagal memuat foto. Coba lagi.');
     }
+    setBusyPeriod(null);
+    e.target.value = '';
+  };
+
+  const removePeriodPhoto = (periodKey) => {
+    setPeriods((prev) => {
+      const next = { ...prev };
+      delete next[periodKey];
+      return next;
+    });
   };
 
   const handleSave = async () => {
     setSaving(true);
-    await onSave({ lat: coords?.lat ?? null, lng: coords?.lng ?? null, photo });
+    await onSave({ lat: coords?.lat ?? null, lng: coords?.lng ?? null, periods });
     setSaving(false);
   };
 
+  const filledCount = EVIDENCE_PERIODS.filter((p) => periods[p.key]?.photo).length;
+
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4" style={{ background: 'rgba(33,29,26,0.7)' }}>
-      <div className="w-full max-w-sm rounded-xl p-5 att-punch-anim att-body" style={{ background: THEME.paper }}>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-bold text-sm" style={{ color: THEME.ink }}>Bukti Kehadiran</h3>
+      <div className="w-full max-w-sm rounded-xl p-5 att-punch-anim att-body max-h-[92vh] overflow-y-auto" style={{ background: THEME.paper }}>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-bold text-sm" style={{ color: THEME.ink }}>Bukti Kehadiran ({filledCount}/4)</h3>
           <button type="button" onClick={onCancel}><X size={18} color={THEME.inkSoft} /></button>
         </div>
 
-        <button type="button" onClick={captureLocation}
-          className="w-full flex items-center justify-center gap-2 py-2.5 rounded mb-2 text-sm font-semibold"
-          style={{ background: THEME.concrete, color: THEME.ink }}>
-          <MapPin size={16} />
-          {geoState === 'loading' ? 'Mengambil lokasi...' : coords ? `Lokasi: ${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}` : 'Ambil Lokasi GPS'}
-        </button>
-        {geoState === 'error' && <p className="text-xs mb-2" style={{ color: THEME.rust }}>Gagal mengambil lokasi. Coba lagi atau lewati.</p>}
+        {coords ? (
+          <div className="flex items-center gap-1.5 mb-3">
+            <a href={`https://www.google.com/maps?q=${coords.lat},${coords.lng}`} target="_blank" rel="noopener noreferrer"
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded text-sm font-semibold"
+              style={{ background: THEME.concrete, color: THEME.ink }}>
+              <MapPin size={16} /> {coords.lat.toFixed(4)}, {coords.lng.toFixed(4)} — Buka Maps
+            </a>
+            <button type="button" onClick={captureLocation} className="px-3 py-2.5 rounded shrink-0" style={{ background: THEME.concrete }}>
+              <RefreshCw size={16} color={THEME.inkSoft} />
+            </button>
+          </div>
+        ) : (
+          <button type="button" onClick={captureLocation}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded mb-3 text-sm font-semibold"
+            style={{ background: THEME.concrete, color: THEME.ink }}>
+            <MapPin size={16} />
+            {geoState === 'loading' ? 'Mengambil lokasi...' : 'Ambil Lokasi GPS (sekali untuk hari ini)'}
+          </button>
+        )}
+        {geoState === 'error' && <p className="text-xs mb-3" style={{ color: THEME.rust }}>Gagal mengambil lokasi. Coba lagi atau lewati.</p>}
 
-        <label className="w-full flex items-center justify-center gap-2 py-2.5 rounded mb-3 text-sm font-semibold cursor-pointer"
-          style={{ background: THEME.concrete, color: THEME.ink }}>
-          <Camera size={16} />
-          {photo ? 'Ganti Foto' : 'Ambil Foto'}
-          <input type="file" accept="image/*" capture="environment" className="hidden" onChange={onFile} />
-        </label>
-        {photo && <img src={photo} alt="bukti" className="w-full rounded-lg mb-3" style={{ maxHeight: 180, objectFit: 'cover' }} />}
+        <div className="grid grid-cols-4 gap-1.5 mb-3">
+          {EVIDENCE_PERIODS.map((p) => (
+            <button key={p.key} type="button" onClick={() => setActivePeriod(p.key)}
+              className="py-2 rounded att-mono text-[11px] font-semibold relative"
+              style={{
+                background: activePeriod === p.key ? THEME.amber : THEME.concrete,
+                color: activePeriod === p.key ? THEME.charcoal : THEME.inkSoft,
+              }}>
+              {p.label}
+              {periods[p.key]?.photo && (
+                <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full" style={{ background: THEME.green }} />
+              )}
+            </button>
+          ))}
+        </div>
+
+        {EVIDENCE_PERIODS.filter((p) => p.key === activePeriod).map((p) => (
+          <div key={p.key}>
+            {periods[p.key]?.photo ? (
+              <div className="mb-3">
+                <img src={periods[p.key].photo} alt={p.label} className="w-full rounded-lg mb-1.5" style={{ maxHeight: 180, objectFit: 'cover' }} />
+                <div className="flex items-center justify-between">
+                  <p className="att-mono text-[10px]" style={{ color: THEME.inkSoft }}>Diambil: {periods[p.key].time}</p>
+                  <button type="button" onClick={() => removePeriodPhoto(p.key)} className="att-mono text-[10px]" style={{ color: THEME.rust }}>Hapus</button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex gap-2 mb-3">
+                <label className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded text-sm font-semibold cursor-pointer"
+                  style={{ background: THEME.concrete, color: THEME.ink }}>
+                  <Camera size={16} />
+                  {busyPeriod === p.key ? '...' : 'Kamera'}
+                  <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => onFile(e, p.key)} disabled={busyPeriod === p.key} />
+                </label>
+                <label className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded text-sm font-semibold cursor-pointer"
+                  style={{ background: THEME.concrete, color: THEME.ink }}>
+                  <Save size={16} />
+                  {busyPeriod === p.key ? '...' : 'File'}
+                  <input type="file" accept="image/*" className="hidden" onChange={(e) => onFile(e, p.key)} disabled={busyPeriod === p.key} />
+                </label>
+              </div>
+            )}
+          </div>
+        ))}
 
         <div className="flex gap-2">
           <button type="button" onClick={handleSave} disabled={saving}
@@ -1123,7 +1431,7 @@ function EvidenceModal({ onSave, onCancel, existing }) {
             Simpan Bukti
           </button>
           <button type="button" onClick={onCancel} className="px-4 py-2.5 rounded text-sm" style={{ border: `1px solid ${THEME.line}`, color: THEME.inkSoft }}>
-            Lewati
+            Tutup
           </button>
         </div>
       </div>
@@ -1176,7 +1484,7 @@ function WorkerWeekCard({ worker, weekRecord, dates, onSetStatus, onSetLembur, o
             {pageDates.map((d) => {
               const rec = (weekRecord && weekRecord[d.key]) || {};
               const status = dayStatus(rec);
-              const hasEvidence = !!(evidenceMap && evidenceMap[d.key]);
+              const hasEvidence = !!(evidenceMap && evidenceMap[d.key] && Object.values(evidenceMap[d.key].periods || {}).some((p) => p?.photo));
               return (
                 <div key={d.key} className="p-2 rounded" style={{ background: THEME.concrete }}>
                   <div className="flex items-center justify-between mb-1">
@@ -1537,7 +1845,7 @@ function AbsensiMingguanTab({ workers, weeks, projects, onCreateWeek, onUpdateWe
 
 /* ---------------- Rekap Upah ---------------- */
 
-function buildUpahRows(workers, weeks, projects, payments, kasbon, kasbonPayments, filter) {
+function buildUpahRows(workers, weeks, projects, payments, kasbon, kasbonPayments, evidence, filter) {
   let filteredWeeks = weeks;
   if (filter && filter !== 'all') {
     if (filter.startsWith('week:')) {
@@ -1549,10 +1857,21 @@ function buildUpahRows(workers, weeks, projects, payments, kasbon, kasbonPayment
     }
   }
   return workers.map((w) => {
+    let evidenceFilled = 0;
+    let evidenceExpected = 0;
     const weekBreakdown = filteredWeeks
       .map((week) => {
-        const totals = calcWorkerWeekTotals(w, week.records[w.id], getWeekDates(week).map((d) => d.key));
+        const dateKeys = getWeekDates(week).map((d) => d.key);
+        const totals = calcWorkerWeekTotals(w, week.records[w.id], dateKeys);
         const project = projects.find((p) => p.id === week.projectId);
+        const dayMap = (evidence && evidence[`${week.id}:${w.id}`]) || {};
+        dateKeys.forEach((day) => {
+          const dayRec = (week.records[w.id] || {})[day];
+          if (!dayRec || dayStatus(dayRec) === 'off') return;
+          evidenceExpected += 4;
+          const periods = dayMap[day]?.periods || {};
+          evidenceFilled += EVIDENCE_PERIODS.filter((p) => periods[p.key]?.photo).length;
+        });
         return { weekId: week.id, weekLabel: week.weekLabel, projectName: project?.name || '-', startDate: week.startDate, endDate: week.endDate, ...totals };
       })
       .filter((x) => x.totalHariBayar > 0 || x.totalJamLembur > 0);
@@ -1567,11 +1886,11 @@ function buildUpahRows(workers, weeks, projects, payments, kasbon, kasbonPayment
     const totalKasbonDibayar = workerKasbonPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
     const totalKasbon = totalKasbonDiberi - totalKasbonDibayar; // sisa kasbon yang belum dilunasi
     const sisa = totalUpah - diterima - totalKasbon;
-    return { worker: w, totalUpah, totalHari, totalJamLembur, diterima, totalKasbon, sisa, workerPayments, workerKasbon, workerKasbonPayments, weekBreakdown };
+    return { worker: w, totalUpah, totalHari, totalJamLembur, diterima, totalKasbon, sisa, workerPayments, workerKasbon, workerKasbonPayments, weekBreakdown, evidenceFilled, evidenceExpected };
   });
 }
 
-function RekapUpahTab({ workers, weeks, projects, payments, kasbon, kasbonPayments, onAddPayment, onDeletePayment }) {
+function RekapUpahTab({ workers, weeks, projects, payments, kasbon, kasbonPayments, evidence, onAddPayment, onDeletePayment }) {
   const [payFormFor, setPayFormFor] = useState(null);
   const [payAmount, setPayAmount] = useState('');
   const [expanded, setExpanded] = useState(null);
@@ -1580,7 +1899,7 @@ function RekapUpahTab({ workers, weeks, projects, payments, kasbon, kasbonPaymen
   const [slipFor, setSlipFor] = useState(null); // worker.id sedang buka slip gaji
   const [showSlipText, setShowSlipText] = useState(null); // worker.id sedang tampil teks slip gaji
 
-  const rows = buildUpahRows(workers, weeks, projects, payments, kasbon, kasbonPayments, filter);
+  const rows = buildUpahRows(workers, weeks, projects, payments, kasbon, kasbonPayments, evidence, filter);
   const grand = rows.reduce((acc, r) => ({
     totalUpah: acc.totalUpah + r.totalUpah,
     diterima: acc.diterima + r.diterima,
@@ -1630,11 +1949,17 @@ function RekapUpahTab({ workers, weeks, projects, payments, kasbon, kasbonPaymen
           {filterLabel()}
         </p>
         {rows.length > 0 && (
-          <PrintMenu
-            onPrint={(thermal) => openPrintDocument('Rekap Upah', buildRekapHtml(rows, grand, thermal), thermal)}
-            onCopy={() => setShowTextPreview(true)}
-            onRawBT={() => printToRawBT(buildRekapText(rows, grand))}
-          />
+          <div className="flex items-center gap-1.5">
+            <button type="button" onClick={() => exportRekapUpahPDF(rows, grand, filterLabel())}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded att-mono text-[11px] font-semibold" style={{ border: `1px solid ${THEME.line}`, color: THEME.ink, background: THEME.paper }}>
+              <Save size={12} /> PDF
+            </button>
+            <PrintMenu
+              onPrint={(thermal) => openPrintDocument('Rekap Upah', buildRekapHtml(rows, grand, thermal), thermal)}
+              onCopy={() => setShowTextPreview(true)}
+              onRawBT={() => printToRawBT(buildRekapText(rows, grand))}
+            />
+          </div>
         )}
       </div>
       {rows.length > 0 && showTextPreview && (
@@ -1646,7 +1971,7 @@ function RekapUpahTab({ workers, weeks, projects, payments, kasbon, kasbonPaymen
         </p>
       )}
       <div className="space-y-2">
-        {rows.map(({ worker, totalUpah, totalHari, totalJamLembur, diterima, totalKasbon, sisa, workerPayments, workerKasbon, workerKasbonPayments, weekBreakdown }) => (
+        {rows.map(({ worker, totalUpah, totalHari, totalJamLembur, diterima, totalKasbon, sisa, workerPayments, workerKasbon, workerKasbonPayments, weekBreakdown, evidenceFilled, evidenceExpected }) => (
           <div key={worker.id} className="p-3 rounded-lg" style={{ background: THEME.paper, border: `1px solid ${THEME.line}` }}>
             <div className="flex items-center justify-between mb-1">
               <div>
@@ -1655,7 +1980,12 @@ function RekapUpahTab({ workers, weeks, projects, payments, kasbon, kasbonPaymen
               </div>
               <p className="att-mono text-sm font-bold" style={{ color: THEME.ink }}>{formatRupiah(totalUpah)}</p>
             </div>
-            <p className="att-mono text-[11px] mb-2" style={{ color: THEME.inkSoft }}>{totalHari} hari kerja &middot; {totalJamLembur} jam lembur</p>
+            <p className="att-mono text-[11px] mb-2" style={{ color: THEME.inkSoft }}>
+              {totalHari} hari kerja &middot; {totalJamLembur} jam lembur
+              {evidenceExpected > 0 && (
+                <> &middot; <Camera size={10} className="inline -mt-0.5" /> {evidenceFilled}/{evidenceExpected} bukti foto</>
+              )}
+            </p>
             <div className="grid grid-cols-3 gap-2 att-mono text-xs">
               <div className="p-2 rounded" style={{ background: THEME.concrete }}>
                 <p style={{ color: THEME.inkSoft }}>Diterima</p>
@@ -1677,14 +2007,20 @@ function RekapUpahTab({ workers, weeks, projects, payments, kasbon, kasbonPaymen
               <Receipt size={13} /> Slip Gaji
             </button>
             {slipFor === worker.id && (
-              <div className="mt-2">
+              <div className="mt-2 flex items-center gap-1.5">
+                <button type="button" onClick={() => exportSlipGajiPDF(
+                  { worker, totalUpah, totalHari, totalJamLembur, diterima, totalKasbon, sisa, workerPayments, workerKasbon, workerKasbonPayments, weekBreakdown, evidenceFilled, evidenceExpected },
+                  filterLabel())}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded att-mono text-[11px] font-semibold" style={{ border: `1px solid ${THEME.line}`, color: THEME.ink, background: THEME.paper }}>
+                  <Save size={12} /> PDF
+                </button>
                 <PrintMenu
                   onPrint={(thermal) => openPrintDocument(`Slip Gaji - ${worker.name}`, buildSlipGajiHtml(
-                    { worker, totalUpah, totalHari, totalJamLembur, diterima, totalKasbon, sisa, workerPayments, workerKasbon, workerKasbonPayments, weekBreakdown },
+                    { worker, totalUpah, totalHari, totalJamLembur, diterima, totalKasbon, sisa, workerPayments, workerKasbon, workerKasbonPayments, weekBreakdown, evidenceFilled, evidenceExpected },
                     filterLabel(), thermal), thermal)}
                   onCopy={() => setShowSlipText(worker.id)}
                   onRawBT={() => printToRawBT(buildSlipGajiText(
-                    { worker, totalUpah, totalHari, totalJamLembur, diterima, totalKasbon, sisa, workerPayments, workerKasbon, workerKasbonPayments, weekBreakdown },
+                    { worker, totalUpah, totalHari, totalJamLembur, diterima, totalKasbon, sisa, workerPayments, workerKasbon, workerKasbonPayments, weekBreakdown, evidenceFilled, evidenceExpected },
                     filterLabel()))}
                 />
               </div>
@@ -1693,7 +2029,7 @@ function RekapUpahTab({ workers, weeks, projects, payments, kasbon, kasbonPaymen
               <TextPreviewModal
                 title={`Slip Gaji - ${worker.name}`}
                 text={buildSlipGajiText(
-                  { worker, totalUpah, totalHari, totalJamLembur, diterima, totalKasbon, sisa, workerPayments, workerKasbon, workerKasbonPayments, weekBreakdown },
+                  { worker, totalUpah, totalHari, totalJamLembur, diterima, totalKasbon, sisa, workerPayments, workerKasbon, workerKasbonPayments, weekBreakdown, evidenceFilled, evidenceExpected },
                   filterLabel())}
                 onClose={() => setShowSlipText(null)}
               />
@@ -2210,6 +2546,8 @@ function BelanjaTab({ materials, onAddMaterial, onUpdateMaterial, onDeleteMateri
   const [statusBayar, setStatusBayar] = useState('cash');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState('');
+  const [notaPhoto, setNotaPhoto] = useState(null); // { photo, time }
+  const [photoBusy, setPhotoBusy] = useState(false);
   const [error, setError] = useState('');
   const [showTextPreview, setShowTextPreview] = useState(false);
 
@@ -2236,6 +2574,20 @@ function BelanjaTab({ materials, onAddMaterial, onUpdateMaterial, onDeleteMateri
 
   const removeFromCart = (id) => setCart(cart.filter((it) => it.id !== id));
 
+  const handleNotaPhoto = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPhotoBusy(true);
+    try {
+      const dataUri = await resizeImage(file);
+      setNotaPhoto({ photo: dataUri, time: nowTimeLabel() });
+    } catch {
+      alert('Gagal memuat foto. Coba lagi.');
+    }
+    setPhotoBusy(false);
+    e.target.value = '';
+  };
+
   const handleSaveNota = async () => {
     setError('');
     if (cart.length === 0) {
@@ -2244,11 +2596,12 @@ function BelanjaTab({ materials, onAddMaterial, onUpdateMaterial, onDeleteMateri
     }
     await onAddPurchase({
       id: uid(), date, supplierId, supplierName: selectedSupplier?.name || '', noNota: noNota.trim(), statusBayar,
-      gudangId, note: note.trim(), items: cart,
+      gudangId, note: note.trim(), items: cart, photo: notaPhoto,
     });
     setCart([]);
     setNoNota('');
     setNote('');
+    setNotaPhoto(null);
   };
 
   const sorted = [...purchases].sort((a, b) => (a.date < b.date ? 1 : -1));
@@ -2365,6 +2718,31 @@ function BelanjaTab({ materials, onAddMaterial, onUpdateMaterial, onDeleteMateri
           </select>
           <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Catatan nota (opsional)"
             className="px-3 py-2 rounded att-body text-sm outline-none sm:col-span-2" style={{ background: THEME.concrete, color: THEME.ink }} />
+        </div>
+
+        <div className="mb-3">
+          {notaPhoto ? (
+            <div className="flex items-center gap-2">
+              <img src={notaPhoto.photo} alt="Foto nota" className="w-14 h-14 rounded object-cover" style={{ border: `1px solid ${THEME.line}` }} />
+              <div className="flex-1">
+                <p className="att-mono text-[10px]" style={{ color: THEME.inkSoft }}>Diambil: {notaPhoto.time}</p>
+                <button type="button" onClick={() => setNotaPhoto(null)} className="att-mono text-[10px]" style={{ color: THEME.rust }}>Hapus foto</button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <label className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded att-mono text-xs font-semibold cursor-pointer"
+                style={{ background: THEME.concrete, color: THEME.ink }}>
+                <Camera size={14} /> {photoBusy ? '...' : 'Foto Kamera'}
+                <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleNotaPhoto} disabled={photoBusy} />
+              </label>
+              <label className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded att-mono text-xs font-semibold cursor-pointer"
+                style={{ background: THEME.concrete, color: THEME.ink }}>
+                <Save size={14} /> {photoBusy ? '...' : 'Foto File'}
+                <input type="file" accept="image/*" className="hidden" onChange={handleNotaPhoto} disabled={photoBusy} />
+              </label>
+            </div>
+          )}
         </div>
 
         <div className="p-3 rounded-lg mb-3" style={{ background: THEME.concrete }}>
@@ -2813,33 +3191,16 @@ function exportRekapProyekExcel(perGudang, utangPekerja, usageByMaterial) {
 function exportRekapProyekPDF(perGudang, utangPekerja, usageByMaterial) {
   try {
     const doc = new window.jspdf.jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
-    const gold = [201, 162, 39];
-    const navy = [13, 25, 48];
-    let y = 40;
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(16);
-    doc.setTextColor(...navy);
-    doc.text(CURRENT_COMPANY?.name || 'Rekap Proyek', 40, y);
-    y += 18;
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(90, 90, 90);
-    doc.text(`Rekap Hutang, Cash, Material & Utang Pekerja  |  Dicetak: ${new Date().toLocaleDateString('id-ID')}`, 40, y);
-    y += 10;
-    doc.setDrawColor(...gold);
-    doc.setLineWidth(1.2);
-    doc.line(40, y, 555, y);
-    y += 18;
+    let y = pdfAddHeader(doc, 'Rekap Proyek', 'Hutang, Cash, Material & Utang Pekerja');
 
     const section = (title, head, rows) => {
       if (y > 740) { doc.addPage(); y = 40; }
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...navy);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...PDF_NAVY);
       doc.text(title, 40, y); y += 8;
       doc.autoTable({
         startY: y, head: [head], body: rows, margin: { left: 40, right: 40 },
-        styles: { fontSize: 8.5, textColor: [30, 30, 30] },
-        headStyles: { fillColor: navy, textColor: [242, 236, 217] },
+        styles: { fontSize: 8.5, textColor: PDF_INK },
+        headStyles: { fillColor: PDF_NAVY, textColor: [242, 236, 217] },
         alternateRowStyles: { fillColor: [250, 248, 241] },
       });
       y = doc.lastAutoTable.finalY + 22;
@@ -2858,11 +3219,2306 @@ function exportRekapProyekPDF(perGudang, utangPekerja, usageByMaterial) {
     const pekerjaRows = utangPekerja.map((r) => [r.worker.name, formatRupiah(r.totalUpah), formatRupiah(r.diterima), formatRupiah(r.sisa)]);
     if (pekerjaRows.length) section('Utang Pekerja', ['Nama', 'Total Upah', 'Dibayar', 'Sisa (Utang)'], pekerjaRows);
 
+    pdfFinishAllPages(doc);
     doc.save('rekap-proyek.pdf');
   } catch (err) {
     console.error('Gagal ekspor PDF:', err);
     alert('Gagal membuat file PDF. Coba lagi, atau gunakan tombol Cetak (bisa disimpan sebagai PDF lewat dialog cetak).');
   }
+}
+
+/* ---- Helper bersama: header elegan navy-emas + watermark, dipakai semua dokumen PDF ---- */
+const PDF_NAVY = [13, 25, 48];
+const PDF_GOLD = [201, 162, 39];
+const PDF_INK = [40, 40, 40];
+const PDF_SLATE = [110, 116, 130];
+
+function pdfAddWatermark(doc) {
+  const w = doc.internal.pageSize.getWidth();
+  const h = doc.internal.pageSize.getHeight();
+  doc.saveGraphicsState();
+  try { doc.setGState(new doc.GState({ opacity: 0.07 })); } catch { /* fallback tanpa transparansi kalau tidak didukung */ }
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(46);
+  doc.setTextColor(...PDF_GOLD);
+  const label = (CURRENT_COMPANY?.name || 'PATTIMURA UTAMA').toUpperCase();
+  doc.text(label, w / 2, h / 2, { angle: 33, align: 'center' });
+  doc.restoreGraphicsState();
+}
+
+function pdfAddHeader(doc, title, subtitle) {
+  const w = doc.internal.pageSize.getWidth();
+  doc.setFillColor(...PDF_NAVY);
+  doc.rect(0, 0, w, 72, 'F');
+  doc.setDrawColor(...PDF_GOLD);
+  doc.setLineWidth(2);
+  doc.line(0, 72, w, 72);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(15);
+  doc.setTextColor(242, 236, 217);
+  doc.text(CURRENT_COMPANY?.name || 'ABSENSI TUKANG', 40, 30);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(...PDF_GOLD);
+  const infoLine = [CURRENT_COMPANY?.address, CURRENT_COMPANY?.phone ? `Telp: ${CURRENT_COMPANY.phone}` : ''].filter(Boolean).join('  |  ');
+  if (infoLine) doc.text(infoLine, 40, 43);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(...PDF_GOLD);
+  doc.text(title.toUpperCase(), w - 40, 30, { align: 'right' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(200, 200, 200);
+  if (subtitle) doc.text(subtitle, w - 40, 43, { align: 'right' });
+  doc.text(`Dicetak: ${new Date().toLocaleDateString('id-ID')}`, w - 40, 55, { align: 'right' });
+
+  return 96; // posisi y untuk mulai konten
+}
+
+function pdfFinishAllPages(doc) {
+  const pages = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= pages; i += 1) {
+    doc.setPage(i);
+    pdfAddWatermark(doc);
+    const w = doc.internal.pageSize.getWidth();
+    const h = doc.internal.pageSize.getHeight();
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(...PDF_SLATE);
+    doc.text(`Halaman ${i} / ${pages}`, w - 40, h - 20, { align: 'right' });
+  }
+}
+
+function exportIdCardPDF(worker) {
+  try {
+    const doc = new window.jspdf.jsPDF({ orientation: 'portrait', unit: 'pt', format: [230, 360] });
+    const w = 230, h = 360;
+
+    doc.setFillColor(...PDF_NAVY);
+    doc.rect(0, 0, w, h, 'F');
+    doc.setFillColor(250, 248, 241);
+    doc.roundedRect(6, 92, w - 12, h - 98, 6, 6, 'F');
+
+    // Header: logo + nama perusahaan
+    try {
+      const logo = CURRENT_COMPANY.logoDataUri || COMPANY_LOGO_DATA_URI;
+      doc.addImage(logo, 'JPEG', w / 2 - 18, 14, 36, 36);
+    } catch { /* lewati kalau format logo tidak didukung addImage */ }
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(242, 236, 217);
+    doc.text(CURRENT_COMPANY?.name || 'ABSENSI TUKANG', w / 2, 62, { align: 'center', maxWidth: w - 24 });
+    if (CURRENT_COMPANY?.tagline) {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(6); doc.setTextColor(...PDF_GOLD);
+      doc.text(CURRENT_COMPANY.tagline.toUpperCase(), w / 2, 72, { align: 'center', maxWidth: w - 24 });
+    }
+    doc.setDrawColor(...PDF_GOLD); doc.setLineWidth(2.5);
+    doc.line(0, 88, w, 88);
+
+    // Foto pekerja
+    const photoSize = 84;
+    const photoX = w / 2 - photoSize / 2;
+    const photoY = 106;
+    doc.setDrawColor(...PDF_GOLD); doc.setLineWidth(2);
+    if (worker.photoDataUri) {
+      try { doc.addImage(worker.photoDataUri, 'JPEG', photoX, photoY, photoSize, photoSize); } catch { /* skip jika gagal */ }
+    } else {
+      doc.setFillColor(239, 233, 216); doc.rect(photoX, photoY, photoSize, photoSize, 'F');
+    }
+    doc.rect(photoX, photoY, photoSize, photoSize);
+
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...PDF_NAVY);
+    doc.text(worker.name, w / 2, photoY + photoSize + 20, { align: 'center', maxWidth: w - 24 });
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...PDF_GOLD);
+    doc.text((worker.position || '-').toUpperCase(), w / 2, photoY + photoSize + 32, { align: 'center' });
+
+    let iy = photoY + photoSize + 46;
+    doc.setDrawColor(...PDF_GOLD); doc.setLineWidth(1.5);
+    doc.line(w / 2 - 28, iy, w / 2 + 28, iy);
+    iy += 14;
+
+    const infoRows = [];
+    if (worker.joinDate) infoRows.push(['Bergabung', worker.joinDate]);
+    if (worker.phone) infoRows.push(['No. HP', worker.phone]);
+    if (worker.ktp) infoRows.push(['No. KTP', worker.ktp]);
+    doc.setFontSize(7.5);
+    infoRows.forEach(([lbl, val]) => {
+      doc.setFont('helvetica', 'normal'); doc.setTextColor(...PDF_SLATE);
+      doc.text(lbl, 18, iy);
+      doc.setFont('helvetica', 'bold'); doc.setTextColor(...PDF_INK);
+      doc.text(val, w - 18, iy, { align: 'right' });
+      iy += 13;
+    });
+
+    doc.setFillColor(...PDF_NAVY);
+    doc.rect(0, h - 22, w, 22, 'F');
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(...PDF_GOLD);
+    doc.text(CURRENT_COMPANY?.website || CURRENT_COMPANY?.phone || '', w / 2, h - 9, { align: 'center' });
+
+    doc.save(`id-card-${worker.name.replace(/\s+/g, '-').toLowerCase()}.pdf`);
+  } catch (err) {
+    console.error('Gagal ekspor ID Card PDF:', err);
+    alert('Gagal membuat file PDF. Coba lagi, atau gunakan tombol Cetak.');
+  }
+}
+
+function exportRekapUpahPDF(rows, grand, filterLabel) {
+  try {
+    const doc = new window.jspdf.jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+    let y = pdfAddHeader(doc, 'Rekap Upah Tukang', filterLabel);
+
+    const body = rows.map((r) => [
+      r.worker.name, r.worker.position || '-', `${r.totalHari} hr / ${r.totalJamLembur} j`,
+      formatRupiah(r.totalUpah), formatRupiah(r.diterima), formatRupiah(r.totalKasbon), formatRupiah(r.sisa),
+    ]);
+    doc.autoTable({
+      startY: y, margin: { left: 40, right: 40 },
+      head: [['Nama', 'Jabatan', 'Hari/Lembur', 'Total Upah', 'Diterima', 'Sisa Kasbon', 'Sisa Upah']],
+      body,
+      foot: [['', '', 'TOTAL', formatRupiah(grand.totalUpah), formatRupiah(grand.diterima), formatRupiah(grand.totalKasbon), formatRupiah(grand.sisa)]],
+      styles: { fontSize: 8, textColor: PDF_INK },
+      headStyles: { fillColor: PDF_NAVY, textColor: [242, 236, 217] },
+      footStyles: { fillColor: [241, 236, 221], textColor: PDF_NAVY, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [250, 248, 241] },
+    });
+
+    pdfFinishAllPages(doc);
+    doc.save('rekap-upah.pdf');
+  } catch (err) {
+    console.error('Gagal ekspor PDF Rekap Upah:', err);
+    alert('Gagal membuat file PDF. Coba lagi, atau gunakan tombol Cetak.');
+  }
+}
+
+function exportSlipGajiPDF(row, filterLabel) {
+  try {
+    const { worker, totalUpah, totalHari, totalJamLembur, diterima, totalKasbon, sisa, workerPayments, workerKasbon, workerKasbonPayments, weekBreakdown, evidenceFilled, evidenceExpected } = row;
+    const doc = new window.jspdf.jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+    let y = pdfAddHeader(doc, 'Slip Gaji', filterLabel);
+
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...PDF_NAVY);
+    doc.text(worker.name, 40, y);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...PDF_SLATE);
+    doc.text(worker.position || '-', 40, y + 14);
+    y += 34;
+
+    // Ringkasan
+    const summary = [
+      ['Hari Kerja', `${totalHari} hari`], ['Jam Lembur', `${totalJamLembur} jam`],
+      ['Total Upah', formatRupiah(totalUpah)], ['Sudah Diterima', formatRupiah(diterima)],
+      ['Sisa Kasbon', formatRupiah(totalKasbon)], ['Sisa Upah', formatRupiah(sisa)],
+    ];
+    if (evidenceExpected > 0) summary.push(['Bukti Foto Kehadiran', `${evidenceFilled}/${evidenceExpected} periode`]);
+    doc.autoTable({
+      startY: y, margin: { left: 40, right: 40 }, theme: 'plain',
+      body: summary.map(([a, b]) => [a, b]),
+      styles: { fontSize: 9.5, textColor: PDF_INK, cellPadding: { top: 4, bottom: 4, left: 0, right: 0 } },
+      columnStyles: { 0: { textColor: PDF_SLATE, cellWidth: 150 }, 1: { fontStyle: 'bold', textColor: PDF_NAVY } },
+    });
+    y = doc.lastAutoTable.finalY + 20;
+
+    const section = (title, head, rows2) => {
+      if (!rows2.length) return;
+      if (y > 700) { doc.addPage(); y = 40; }
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(...PDF_NAVY);
+      doc.text(title, 40, y); y += 6;
+      doc.autoTable({
+        startY: y, margin: { left: 40, right: 40 }, head: [head], body: rows2,
+        styles: { fontSize: 8, textColor: PDF_INK },
+        headStyles: { fillColor: [241, 236, 221], textColor: PDF_NAVY },
+        alternateRowStyles: { fillColor: [250, 248, 241] },
+      });
+      y = doc.lastAutoTable.finalY + 20;
+    };
+
+    section('Rincian per Periode', ['Periode', 'Proyek', 'Hari', 'Lembur (j)', 'Upah'],
+      weekBreakdown.map((wk) => [wk.weekLabel, wk.projectName, String(wk.totalHariBayar), String(wk.totalJamLembur), formatRupiah(wk.totalUpah)]));
+
+    section('Riwayat Pembayaran Upah', ['Tanggal', 'Jumlah'],
+      workerPayments.map((p) => [p.date, formatRupiah(p.amount)]));
+
+    section('Riwayat Kasbon Diberikan', ['Tanggal', 'Jumlah', 'Catatan'],
+      workerKasbon.map((k) => [k.date, formatRupiah(k.amount), k.note || '']));
+
+    section('Riwayat Pelunasan Kasbon', ['Tanggal', 'Jumlah'],
+      workerKasbonPayments.map((p) => [p.date, formatRupiah(p.amount)]));
+
+    pdfFinishAllPages(doc);
+    doc.save(`slip-gaji-${worker.name.replace(/\s+/g, '-').toLowerCase()}.pdf`);
+  } catch (err) {
+    console.error('Gagal ekspor PDF Slip Gaji:', err);
+    alert('Gagal membuat file PDF. Coba lagi, atau gunakan tombol Cetak.');
+  }
+}
+
+/* ---------------- AHSP (Analisa Harga Satuan Pekerjaan) ---------------- */
+
+function ahspBaseHarga(komponen) {
+  return (komponen || []).reduce((s, k) => s + (Number(k.koefisien) || 0) * (Number(k.hargaSatuan) || 0), 0);
+}
+function ahspFinalHarga(komponen, overheadProfitPercent) {
+  const base = ahspBaseHarga(komponen);
+  return base * (1 + (Number(overheadProfitPercent) || 0) / 100);
+}
+function emptyAhspKomponen() {
+  return { id: uid(), jenis: 'bahan', nama: '', koefisien: '', hargaSatuan: '' };
+}
+const AHSP_JENIS_LABEL = { bahan: 'Bahan', upah: 'Upah', alat: 'Alat' };
+const AHSP_SUMBER_LIST = ['AHSP Cipta Karya', 'AHSP Bina Marga', 'AHSP SDA', 'AHSP SNI', 'Custom'];
+const UPAH_KATEGORI = [
+  { key: 'pekerja', label: 'Pekerja' },
+  { key: 'tukang', label: 'Tukang' },
+  { key: 'tukangBatu', label: 'Tukang Batu' },
+  { key: 'tukangKayu', label: 'Tukang Kayu' },
+  { key: 'tukangBesi', label: 'Tukang Besi' },
+  { key: 'tukangCat', label: 'Tukang Cat' },
+  { key: 'mandor', label: 'Mandor' },
+  { key: 'kepalaTukang', label: 'Kepala Tukang' },
+  { key: 'penjagaMalam', label: 'Penjaga Malam' },
+];
+
+const HSPK_PALEMBANG_2026 = [
+  { no: 1, nama: 'Bata Merah', satuan: 'Buah', harga: 1100 },
+  { no: 2, nama: 'Batu Bata / Merah', satuan: 'Buah', harga: 1500 },
+  { no: 3, nama: 'Sok Pipa Pvc 1 Inci', satuan: 'Buah', harga: 5400 },
+  { no: 4, nama: 'Karung', satuan: 'Lembar', harga: 5800 },
+  { no: 5, nama: 'Seal Tape', satuan: 'Buah', harga: 7700 },
+  { no: 6, nama: 'Sdl Pipa Pvc 1 Inci', satuan: 'Buah', harga: 10900 },
+  { no: 7, nama: 'Kuas', satuan: 'Buah', harga: 12300 },
+  { no: 8, nama: 'Ring Nepple 1/2 Inci', satuan: 'Buah', harga: 16100 },
+  { no: 9, nama: 'Paku Beton 0,5-3 Cm', satuan: 'Kotak', harga: 22500 },
+  { no: 10, nama: 'Amplas Ukuran 9X11 Merk 3M', satuan: 'Lembar', harga: 12800 },
+  { no: 11, nama: 'Ember Bangunan', satuan: 'Buah', harga: 16500 },
+  { no: 12, nama: 'Baja Tulangan', satuan: 'Kg', harga: 30600 },
+  { no: 13, nama: 'Lem Pipa 60 Gr', satuan: 'Botol', harga: 21200 },
+  { no: 14, nama: 'Kawat Beton', satuan: 'Kg', harga: 30500 },
+  { no: 15, nama: 'Paku Beton 4-7Cm', satuan: 'Kotak', harga: 30300 },
+  { no: 16, nama: 'Centong Bangunan', satuan: 'Buah', harga: 30000 },
+  { no: 17, nama: 'Stop Kran 1/2', satuan: 'Buah', harga: 29000 },
+  { no: 18, nama: 'Paku', satuan: 'Kg', harga: 27000 },
+  { no: 19, nama: 'Baja', satuan: 'Kg', harga: 30000 },
+  { no: 20, nama: 'Besi Cor', satuan: 'Kg', harga: 33000 },
+  { no: 21, nama: 'Thiner', satuan: 'Kg', harga: 33200 },
+  { no: 22, nama: 'Thiner', satuan: 'Botol', harga: 29000 },
+  { no: 23, nama: 'Thiner', satuan: 'Kaleng', harga: 37000 },
+  { no: 24, nama: 'Stop Kran 3/4', satuan: 'Buah', harga: 31000 },
+  { no: 25, nama: 'Pipa Pvc Aw 1/2 Per 4M', satuan: 'Batang', harga: 39000 },
+  { no: 26, nama: 'Stop Kran 1"', satuan: 'Buah', harga: 38400 },
+  { no: 27, nama: 'Meteran', satuan: 'Unit', harga: 40400 },
+  { no: 28, nama: 'Baja Tulangan', satuan: 'Kg', harga: 21700 },
+  { no: 29, nama: 'Ampelas', satuan: 'Lembar', harga: 19000 },
+  { no: 30, nama: 'Besi Beton Polos 6 Mm -Hjj, Hanil,Ks (Sni)', satuan: 'Batang', harga: 49500 },
+  { no: 31, nama: 'Kawat No.12', satuan: 'Kg', harga: 40000 },
+  { no: 32, nama: 'Material Aspal-Aspal', satuan: 'Liter', harga: 34000 },
+  { no: 33, nama: 'Kawat Las Listrik', satuan: 'Kg', harga: 84000 },
+  { no: 34, nama: 'Paku Beton 10-12,5 Cm', satuan: 'Kotak', harga: 41000 },
+  { no: 35, nama: 'Paku Beton', satuan: 'Kotak', harga: 45000 },
+  { no: 36, nama: 'Paku Biasa', satuan: 'Kg', harga: 42300 },
+  { no: 37, nama: 'Benang Bangunan', satuan: 'Gulung', harga: 35000 },
+  { no: 38, nama: 'Meni,Plamir,Cat Dasar/0,9 Liter', satuan: 'Kaleng', harga: 67000 },
+  { no: 39, nama: 'Pipa Pvc Aw 3/4 Per 4M', satuan: 'Batang', harga: 55000 },
+  { no: 40, nama: 'Meni Besi', satuan: 'Kg', harga: 71200 },
+  { no: 41, nama: 'Besi Hollow', satuan: 'Batang', harga: 43000 },
+  { no: 42, nama: 'Lem Pipa 400 Gr', satuan: 'Kaleng', harga: 70000 },
+  { no: 43, nama: 'Dempul', satuan: 'Kg', harga: 78000 },
+  { no: 44, nama: 'Pipa Pvc Aw 1 Per 4M', satuan: 'Batang', harga: 78000 },
+  { no: 45, nama: 'Centong/Roskam Bangunan', satuan: 'Buah', harga: 66000 },
+  { no: 46, nama: 'Besi Beton Polos 8 Mm -Hjj, Hanil,Ks (Sni)', satuan: 'Batang', harga: 71000 },
+  { no: 47, nama: 'Fiber Pagar', satuan: 'Roll', harga: 62000 },
+  { no: 48, nama: 'Pipa Pvc 1 Inci', satuan: 'Buah', harga: 70000 },
+  { no: 49, nama: 'Cat Batu Candi / Liter', satuan: 'Kaleng', harga: 130000 },
+  { no: 50, nama: 'Cat Tembok', satuan: 'Kg', harga: 91000 },
+  { no: 51, nama: 'Material Bahan Lainnya-Semen', satuan: 'Zak', harga: 97000 },
+  { no: 52, nama: 'Besi Hollow', satuan: 'Batang', harga: 109000 },
+  { no: 53, nama: 'Wd 40', satuan: 'Buah', harga: 107000 },
+  { no: 54, nama: 'Pas Bata & Plester', satuan: 'Zak', harga: 104000 },
+  { no: 55, nama: 'Pengisi Nat Keramik', satuan: 'Kg', harga: 74000 },
+  { no: 56, nama: 'Material Bahan Lainnya-Cat Besi', satuan: 'Kg', harga: 111000 },
+  { no: 57, nama: 'Thinner', satuan: 'Kaleng', harga: 99000 },
+  { no: 58, nama: 'Besi Siku', satuan: 'Batang', harga: 113000 },
+  { no: 59, nama: 'Cat Tembok Exterior / Cat Tembok Interior', satuan: 'Kg', harga: 69000 },
+  { no: 60, nama: 'Sarana Dan Prasarana Air Mancur-Pipa Pvc Aw 1 1/4', satuan: 'Batang', harga: 103000 },
+  { no: 61, nama: 'Sarana Dan Prasarana Air Mancur-Pipa Pvc Aw 1 1/2', satuan: 'Batang', harga: 115000 },
+  { no: 62, nama: 'Cat Kusen & Besi', satuan: 'Kg', harga: 102000 },
+  { no: 63, nama: 'Sarana Dan Prasarana Air Mancur-Pipa Pvc Aw 2', satuan: 'Batang', harga: 169000 },
+  { no: 64, nama: 'Cat Anti Karat Untuk Seng /Meta Galvanis (Water - Based)1 Liter', satuan: 'Kaleng', harga: 165000 },
+  { no: 65, nama: 'Paving Blok', satuan: 'M2', harga: 191000 },
+  { no: 66, nama: 'Lem Pipa', satuan: 'Buah', harga: 134000 },
+  { no: 67, nama: 'Material Agregat/Batu Pecah-Agregat Base Kelas A', satuan: 'M3', harga: 370000 },
+  { no: 68, nama: 'Pipa Pvc Tee Elbow', satuan: 'Buah', harga: 172000 },
+  { no: 69, nama: 'Meteran Kecil', satuan: 'Buah', harga: 117000 },
+  { no: 70, nama: 'Pasir Urug', satuan: 'M3', harga: 243000 },
+  { no: 71, nama: 'Kayu Bakar', satuan: 'Mobil', harga: 275000 },
+  { no: 72, nama: 'Besi Hollow', satuan: 'Batang', harga: 224000 },
+  { no: 73, nama: 'Pipa Pvc Aw 2,5', satuan: 'Batang', harga: 203000 },
+  { no: 74, nama: 'Kawat Las', satuan: 'Pak', harga: 230000 },
+  { no: 75, nama: 'Gembok Sherlock 40 Mm', satuan: 'Buah', harga: 281000 },
+  { no: 76, nama: 'Portland Semen', satuan: 'Kg', harga: 119000 },
+  { no: 77, nama: 'Selang Spiral 3 Inci', satuan: 'Buah', harga: 183000 },
+  { no: 78, nama: 'Slang Bangunan', satuan: 'Buah', harga: 218000 },
+  { no: 79, nama: 'Besi Beton Polos12 Mm -Hjj, Hanil,Ks (Sni)', satuan: 'Batang', harga: 183000 },
+  { no: 80, nama: 'Besi Cnp', satuan: 'Batang', harga: 480000 },
+  { no: 81, nama: 'Kakak Tua (Catut)', satuan: 'Buah', harga: 108000 },
+  { no: 82, nama: 'Pasir Halus (Untuk Hrs)', satuan: 'M3', harga: 284000 },
+  { no: 83, nama: 'Waterpass', satuan: 'Buah', harga: 282000 },
+  { no: 84, nama: 'Besi Hollow', satuan: 'Batang', harga: 252000 },
+  { no: 85, nama: 'Besi Cnp', satuan: 'Batang', harga: 367500 },
+  { no: 86, nama: 'Besi Unp', satuan: 'Batang', harga: 338000 },
+  { no: 87, nama: 'Pelat Besi/Baja 3 Inc', satuan: 'Meter', harga: 288000 },
+  { no: 88, nama: 'Besi Siku', satuan: 'Batang', harga: 280000 },
+  { no: 89, nama: 'Kunci Pintu', satuan: 'Set', harga: 474000 },
+  { no: 90, nama: 'Pipa Pvc Aw 3', satuan: 'Batang', harga: 281400 },
+  { no: 91, nama: 'Pasir', satuan: 'Pick Up', harga: 222000 },
+  { no: 92, nama: 'Besi Unp', satuan: 'Batang', harga: 310500 },
+  { no: 93, nama: 'Acian Plester Dan Beton', satuan: 'Kg', harga: 285500 },
+  { no: 94, nama: 'Besi Cnp', satuan: 'Batang', harga: 456000 },
+  { no: 95, nama: 'Besi Hollow', satuan: 'Batang', harga: 315000 },
+  { no: 96, nama: 'Batu Kali/Belah', satuan: 'M3', harga: 495000 },
+  { no: 97, nama: 'Tangkat Lampu Rambu Kerja', satuan: 'Buah', harga: 266000 },
+  { no: 98, nama: 'Meteran Besar', satuan: 'Buah', harga: 272000 },
+  { no: 99, nama: 'Cat Tembok Exterior/Interior', satuan: 'Galon', harga: 314000 },
+  { no: 100, nama: 'Besi Cnp', satuan: 'Batang', harga: 436000 },
+  { no: 101, nama: 'Acian Profil', satuan: 'Zak', harga: 260000 },
+  { no: 102, nama: 'Besi Cnp', satuan: 'Batang', harga: 467000 },
+  { no: 103, nama: 'Buis Beton', satuan: 'Buah', harga: 429000 },
+  { no: 104, nama: 'Pasir Beton', satuan: 'M3', harga: 434000 },
+  { no: 105, nama: 'Sarana Dan Prasarana Air Mancur-Pipa Pvc Aw 4', satuan: 'Batang', harga: 451000 },
+  { no: 106, nama: 'Material Agregat/Batu Pecah-Koral/Kerikil/Agregat Beton', satuan: 'M3', harga: 518000 },
+  { no: 107, nama: 'Besi Siku', satuan: 'Batang', harga: 470000 },
+  { no: 108, nama: 'Pasir Pasang', satuan: 'M3', harga: 430000 },
+  { no: 109, nama: 'Besi Beton Polos', satuan: 'Batang', harga: 492000 },
+  { no: 110, nama: 'Material Bahan Lainnya-Pasir', satuan: 'M3', harga: 400000 },
+  { no: 111, nama: 'Besi Unp', satuan: 'Batang', harga: 494000 },
+  { no: 112, nama: 'Pipa Pvc Elbow', satuan: 'Buah', harga: 286000 },
+  { no: 113, nama: 'Atap Bitumen Transparant', satuan: 'Pcs', harga: 562000 },
+  { no: 114, nama: 'Besi Siku', satuan: 'Batang', harga: 633000 },
+  { no: 115, nama: 'Pasir Silika', satuan: 'Zak', harga: 412000 },
+  { no: 116, nama: 'Pasir Karbon Aktif', satuan: 'Zak', harga: 506000 },
+  { no: 117, nama: 'Pasir Zeolite', satuan: 'Zak', harga: 362000 },
+  { no: 118, nama: 'Perbaikan Permukaan Beton', satuan: 'Zak', harga: 420000 },
+  { no: 119, nama: 'Besi Siku', satuan: 'Batang', harga: 661000 },
+  { no: 120, nama: 'Besi Unp', satuan: 'Batang', harga: 757000 },
+  { no: 121, nama: 'Pipa Pvc', satuan: 'Buah', harga: 685000 },
+  { no: 122, nama: 'Mesin Pompa Air', satuan: 'Unit', harga: 825000 },
+  { no: 123, nama: 'Box Culvert', satuan: 'Buah', harga: 995000 },
+  { no: 124, nama: 'Besi Unp', satuan: 'Batang', harga: 1000000 },
+  { no: 125, nama: 'Kerikil/Koral/Agregat Beton', satuan: 'M3', harga: 685000 },
+  { no: 126, nama: 'Besi Plat', satuan: 'Lembar', harga: 818000 },
+  { no: 127, nama: 'Besi Plat', satuan: 'Keping', harga: 858000 },
+  { no: 128, nama: 'Batu Split', satuan: 'M2', harga: 692000 },
+  { no: 129, nama: 'Batu / Batu Kali/ Batu Belah', satuan: 'M3', harga: 845000 },
+  { no: 130, nama: 'Agregat Base Kelas A/B/C', satuan: 'M3', harga: 750000 },
+  { no: 131, nama: 'Keramik', satuan: 'M2', harga: 695000 },
+  { no: 132, nama: 'Troli / Gerobak Sorong', satuan: 'Buah', harga: 978000 },
+  { no: 133, nama: 'Baja Pelat', satuan: 'M2', harga: 1005000 },
+  { no: 134, nama: 'Material Beton Ready Mix-Ready Mix', satuan: 'M3', harga: 1209000 },
+  { no: 135, nama: 'Besi Unp', satuan: 'Batang', harga: 1357000 },
+  { no: 136, nama: 'Besi Plat', satuan: 'Lembar', harga: 1261000 },
+  { no: 137, nama: 'Pipa Pvc Untuk Air Limbah', satuan: 'M3', harga: 1342000 },
+  { no: 138, nama: 'Allumunium Pelat', satuan: 'Meter', harga: 1306000 },
+  { no: 139, nama: 'Selang Air Spiral 8 Inch', satuan: 'Roll', harga: 1874000 },
+  { no: 140, nama: 'Pipa Baja Lainnya', satuan: 'Buah', harga: 1587000 },
+  { no: 141, nama: 'Ready Mix Cor Beton', satuan: 'M3', harga: 1976000 },
+  { no: 142, nama: 'Besi Plat', satuan: 'Buah', harga: 1713000 },
+  { no: 143, nama: 'Besi Plat', satuan: 'Keping', harga: 1717000 },
+  { no: 144, nama: 'Besi Unp', satuan: 'Batang', harga: 2023000 },
+  { no: 145, nama: 'Besi Plat', satuan: 'Lembar', harga: 2448000 },
+  { no: 146, nama: 'Sarana Dan Prasarana Air Mancur-Pipa Pvc Aw 10', satuan: 'Batang', harga: 3042000 },
+  { no: 147, nama: 'Cat Tembok', satuan: 'Liter', harga: 2152000 },
+  { no: 148, nama: 'Besi Siku', satuan: 'Batang', harga: 2739000 },
+  { no: 149, nama: 'Pipa Lainnya', satuan: 'Buah', harga: 5283000 },
+  { no: 150, nama: 'Aspal Drum', satuan: 'Drum', harga: 2887000 },
+  { no: 151, nama: 'Besi Wf', satuan: 'Batang', harga: 3334000 },
+  { no: 152, nama: 'Kayu Racuk', satuan: 'M3', harga: 2066000 },
+  { no: 153, nama: 'Besi Pipa', satuan: 'Meter', harga: 3230000 },
+  { no: 154, nama: 'Besi Plat', satuan: 'Buah', harga: 5649000 },
+  { no: 155, nama: 'Besi Plat', satuan: 'Buah', harga: 10513000 },
+  { no: 156, nama: 'Besi UNP', satuan: 'Batang', harga: 638000 },
+  { no: 157, nama: 'Besi UNP', satuan: 'Btg (6m)', harga: 920000 },
+  { no: 158, nama: 'Besi UNP', satuan: 'Batang', harga: 1646000 },
+  { no: 159, nama: 'Besi UNP', satuan: 'Batang', harga: 2070000 },
+];
+
+function AhspMasterForm({ onSave, onCancel, initial, overheadProfit, upahRates }) {
+  const [kode, setKode] = useState(initial?.kode || '');
+  const [uraian, setUraian] = useState(initial?.uraian || '');
+  const [satuan, setSatuan] = useState(initial?.satuan || '');
+  const [sumber, setSumber] = useState(initial?.sumber || AHSP_SUMBER_LIST[4]);
+  const [komponen, setKomponen] = useState(initial?.komponen?.length ? initial.komponen : [emptyAhspKomponen()]);
+
+  const updateK = (id, patch) => setKomponen(komponen.map((k) => (k.id === id ? { ...k, ...patch } : k)));
+  const addK = () => setKomponen([...komponen, emptyAhspKomponen()]);
+  const removeK = (id) => setKomponen(komponen.filter((k) => k.id !== id));
+  const pickUpah = (id, kategoriKey) => {
+    const kategori = UPAH_KATEGORI.find((u) => u.key === kategoriKey);
+    if (!kategori) return;
+    updateK(id, { nama: kategori.label, hargaSatuan: String(upahRates?.[kategoriKey] || 0) });
+  };
+  const pickBahan = (id, no) => {
+    const item = HSPK_PALEMBANG_2026.find((h) => String(h.no) === no);
+    if (!item) return;
+    updateK(id, { nama: item.nama, hargaSatuan: String(item.harga) });
+  };
+
+  const base = ahspBaseHarga(komponen);
+  const final = ahspFinalHarga(komponen, overheadProfit);
+
+  const handleSave = async () => {
+    if (!kode.trim() || !uraian.trim() || !satuan.trim()) {
+      alert('Isi kode AHSP, uraian pekerjaan, dan satuan dulu.');
+      return;
+    }
+    await onSave({
+      id: initial?.id || uid(), kode: kode.trim(), uraian: uraian.trim(), satuan: satuan.trim(), sumber,
+      komponen: komponen.filter((k) => k.nama.trim()).map((k) => ({ ...k, koefisien: Number(k.koefisien) || 0, hargaSatuan: Number(k.hargaSatuan) || 0 })),
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4" style={{ background: 'rgba(13,25,48,0.7)' }}>
+      <div className="w-full max-w-md rounded-xl p-4 att-body max-h-[92vh] overflow-y-auto" style={{ background: THEME.paper }}>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-bold text-sm" style={{ color: THEME.ink }}>{initial ? 'Edit' : 'Tambah'} Item AHSP</h3>
+          <button type="button" onClick={onCancel}><X size={18} color={THEME.inkSoft} /></button>
+        </div>
+        <div className="grid grid-cols-2 gap-2 mb-2">
+          <input value={kode} onChange={(e) => setKode(e.target.value)} placeholder="Kode AHSP (mis. A.4.1.1.1)"
+            className="px-3 py-2 rounded att-mono text-xs outline-none" style={{ background: THEME.concrete, color: THEME.ink }} />
+          <input value={satuan} onChange={(e) => setSatuan(e.target.value)} placeholder="Satuan (m3, m2, dll)"
+            className="px-3 py-2 rounded att-mono text-xs outline-none" style={{ background: THEME.concrete, color: THEME.ink }} />
+        </div>
+        <select value={sumber} onChange={(e) => setSumber(e.target.value)}
+          className="w-full px-3 py-2 rounded att-mono text-xs outline-none mb-2" style={{ background: THEME.concrete, color: THEME.ink }}>
+          {AHSP_SUMBER_LIST.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <input value={uraian} onChange={(e) => setUraian(e.target.value)} placeholder="Uraian pekerjaan (mis. 1 m3 Beton Mutu K-225)"
+          className="w-full px-3 py-2 rounded att-body text-sm outline-none mb-3" style={{ background: THEME.concrete, color: THEME.ink }} />
+
+        <p className="att-mono text-[10px] mb-2" style={{ color: THEME.inkSoft }}>STRUKTUR HARGA (BAHAN / UPAH / ALAT)</p>
+        <div className="space-y-2 mb-2">
+          {komponen.map((k) => (
+            <div key={k.id} className="p-2.5 rounded-lg" style={{ background: THEME.concrete }}>
+              <div className="flex gap-1.5 mb-1.5">
+                <select value={k.jenis} onChange={(e) => updateK(k.id, { jenis: e.target.value })}
+                  className="px-2 py-1.5 rounded att-mono text-xs outline-none" style={{ background: THEME.paper, color: THEME.ink }}>
+                  {Object.entries(AHSP_JENIS_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+                <input value={k.nama} onChange={(e) => updateK(k.id, { nama: e.target.value })} placeholder="Nama item"
+                  className="flex-1 px-2 py-1.5 rounded att-body text-xs outline-none" style={{ background: THEME.paper, color: THEME.ink }} />
+                <button type="button" onClick={() => removeK(k.id)} className="p-1.5 rounded shrink-0" style={{ background: THEME.paper }}>
+                  <Trash2 size={13} color={THEME.rust} />
+                </button>
+              </div>
+              {k.jenis === 'upah' && (
+                <select value="" onChange={(e) => pickUpah(k.id, e.target.value)}
+                  className="w-full px-2 py-1.5 rounded att-mono text-[10.5px] outline-none mb-1.5" style={{ background: THEME.paper, color: THEME.inkSoft }}>
+                  <option value="">— Isi cepat dari Data Upah —</option>
+                  {UPAH_KATEGORI.map((u) => <option key={u.key} value={u.key}>{u.label} ({formatRupiah(upahRates?.[u.key] || 0)})</option>)}
+                </select>
+              )}
+              {k.jenis === 'bahan' && (
+                <select value="" onChange={(e) => pickBahan(k.id, e.target.value)}
+                  className="w-full px-2 py-1.5 rounded att-mono text-[10.5px] outline-none mb-1.5" style={{ background: THEME.paper, color: THEME.inkSoft }}>
+                  <option value="">— Isi cepat dari HSPK Palembang 2026 —</option>
+                  {HSPK_PALEMBANG_2026.map((h) => <option key={h.no} value={h.no}>{h.nama} — {formatRupiah(h.harga)}/{h.satuan}</option>)}
+                </select>
+              )}
+              <div className="grid grid-cols-2 gap-1.5">
+                <input value={k.koefisien} onChange={(e) => updateK(k.id, { koefisien: e.target.value.replace(/[^0-9.]/g, '') })} placeholder="Koefisien" inputMode="decimal"
+                  className="px-2 py-1.5 rounded att-mono text-xs outline-none" style={{ background: THEME.paper, color: THEME.ink }} />
+                <input value={k.hargaSatuan} onChange={(e) => updateK(k.id, { hargaSatuan: e.target.value.replace(/[^0-9]/g, '') })} placeholder="Harga satuan" inputMode="numeric"
+                  className="px-2 py-1.5 rounded att-mono text-xs outline-none" style={{ background: THEME.paper, color: THEME.ink }} />
+              </div>
+              {k.koefisien && k.hargaSatuan && (
+                <p className="att-mono text-[10px] mt-1" style={{ color: THEME.amber }}>= {formatRupiah((Number(k.koefisien) || 0) * (Number(k.hargaSatuan) || 0))}</p>
+              )}
+            </div>
+          ))}
+        </div>
+        <button type="button" onClick={addK}
+          className="w-full flex items-center justify-center gap-1.5 py-2 rounded att-mono text-xs font-semibold mb-3"
+          style={{ border: `1px dashed ${THEME.line}`, color: THEME.inkSoft }}>
+          <Plus size={13} /> Tambah Komponen
+        </button>
+
+        <div className="p-2.5 rounded-lg mb-3" style={{ background: THEME.charcoal }}>
+          <div className="flex items-center justify-between">
+            <span className="att-mono text-[11px]" style={{ color: THEME.paper }}>Harga Dasar (tanpa profit)</span>
+            <span className="att-mono text-xs" style={{ color: THEME.paper }}>{formatRupiah(base)}</span>
+          </div>
+          <div className="flex items-center justify-between mt-1">
+            <span className="att-mono text-[11px]" style={{ color: THEME.amber }}>Harga Satuan Final (+{overheadProfit}%)</span>
+            <span className="att-body font-bold text-sm" style={{ color: THEME.amber }}>{formatRupiah(final)}</span>
+          </div>
+        </div>
+
+        <button type="button" onClick={handleSave}
+          className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded font-semibold text-sm"
+          style={{ background: THEME.amber, color: THEME.charcoal }}>
+          <Check size={15} /> Simpan Item AHSP
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AhspMasterTab({ ahspList, onAdd, onUpdate, onDelete, company, onSaveCompany }) {
+  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [search, setSearch] = useState('');
+  const [overheadInput, setOverheadInput] = useState(String(company.ahspOverheadProfit ?? 15));
+  const overheadProfit = Number(company.ahspOverheadProfit ?? 15);
+  const [upahInput, setUpahInput] = useState(() => {
+    const rates = company.upahPekerja || {};
+    const init = {};
+    UPAH_KATEGORI.forEach((u) => { init[u.key] = String(rates[u.key] || ''); });
+    return init;
+  });
+
+  const handleSaveOverhead = async () => {
+    await onSaveCompany({ ...company, ahspOverheadProfit: Number(overheadInput) || 0 });
+  };
+
+  const handleSaveUpah = async () => {
+    const rates = {};
+    UPAH_KATEGORI.forEach((u) => { rates[u.key] = Number(upahInput[u.key]) || 0; });
+    await onSaveCompany({ ...company, upahPekerja: rates });
+  };
+
+  const handleSave = async (data) => {
+    if (editing) await onUpdate(editing.id, data);
+    else await onAdd(data);
+    setShowForm(false);
+    setEditing(null);
+  };
+
+  const filtered = ahspList.filter((a) =>
+    !search.trim() || a.uraian.toLowerCase().includes(search.toLowerCase()) || a.kode.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div className="p-4 pb-24">
+      <p className="att-mono text-xs mb-2" style={{ color: THEME.inkSoft }}>SETTING AHSP</p>
+      <div className="p-3 rounded-lg mb-3 flex items-center gap-2" style={{ background: THEME.paper, border: `1px solid ${THEME.line}` }}>
+        <div className="flex-1">
+          <p className="att-body text-sm font-semibold" style={{ color: THEME.ink }}>Profit & Overhead</p>
+          <p className="att-mono text-[10px]" style={{ color: THEME.inkSoft }}>Ditambahkan ke semua harga dasar AHSP saat dipakai di Penawaran</p>
+        </div>
+        <input value={overheadInput} onChange={(e) => setOverheadInput(e.target.value.replace(/[^0-9.]/g, ''))}
+          className="w-16 px-2 py-2 rounded att-mono text-sm text-center outline-none" style={{ background: THEME.concrete, color: THEME.ink }} />
+        <span className="att-mono text-sm" style={{ color: THEME.ink }}>%</span>
+        <button type="button" onClick={handleSaveOverhead} className="p-2 rounded" style={{ background: THEME.amber }}>
+          <Check size={15} color={THEME.charcoal} />
+        </button>
+      </div>
+
+      <div className="p-3 rounded-lg mb-5" style={{ background: THEME.paper, border: `1px solid ${THEME.line}` }}>
+        <p className="att-body text-sm font-semibold mb-0.5" style={{ color: THEME.ink }}>Data Upah Pekerja</p>
+        <p className="att-mono text-[10px] mb-2.5" style={{ color: THEME.inkSoft }}>Diisi manual — dipakai untuk isi cepat komponen "Upah" di AHSP</p>
+        <div className="grid grid-cols-2 gap-2 mb-2">
+          {UPAH_KATEGORI.map((u) => (
+            <div key={u.key} className="flex items-center gap-1.5">
+              <span className="att-mono text-[9.5px] flex-1" style={{ color: THEME.inkSoft }}>{u.label}</span>
+              <input value={upahInput[u.key]} onChange={(e) => setUpahInput({ ...upahInput, [u.key]: e.target.value.replace(/[^0-9]/g, '') })}
+                placeholder="Rp" inputMode="numeric"
+                className="w-20 px-2 py-1.5 rounded att-mono text-[10.5px] outline-none" style={{ background: THEME.concrete, color: THEME.ink }} />
+            </div>
+          ))}
+        </div>
+        <button type="button" onClick={handleSaveUpah}
+          className="w-full flex items-center justify-center gap-1.5 py-2 rounded att-mono text-xs font-semibold" style={{ background: THEME.amber, color: THEME.charcoal }}>
+          <Check size={13} /> Simpan Data Upah
+        </button>
+      </div>
+
+      <div className="flex items-center justify-between mb-2">
+        <p className="att-mono text-xs" style={{ color: THEME.inkSoft }}>MASTER AHSP ({ahspList.length})</p>
+        <button type="button" onClick={() => { setEditing(null); setShowForm(true); }}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded att-mono text-xs font-semibold" style={{ background: THEME.amber, color: THEME.charcoal }}>
+          <Plus size={13} /> Tambah Item
+        </button>
+      </div>
+      <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari kode atau uraian pekerjaan..."
+        className="w-full px-3 py-2 rounded att-body text-sm outline-none mb-3" style={{ background: THEME.paper, color: THEME.ink, border: `1px solid ${THEME.line}` }} />
+
+      <div className="space-y-2">
+        {filtered.map((a) => (
+          <div key={a.id} className="p-3 rounded-lg" style={{ background: THEME.paper, border: `1px solid ${THEME.line}` }}>
+            <div className="flex items-center justify-between">
+              <p className="att-mono text-[10px]" style={{ color: THEME.amber }}>{a.kode}</p>
+              {a.sumber && <span className="att-mono text-[9px] px-1.5 py-0.5 rounded" style={{ background: THEME.concrete, color: THEME.inkSoft }}>{a.sumber}</span>}
+            </div>
+            <p className="att-body font-semibold text-sm" style={{ color: THEME.ink }}>{a.uraian}</p>
+            <p className="att-mono text-xs mt-1" style={{ color: THEME.inkSoft }}>
+              Satuan: {a.satuan} &middot; Harga final: <b style={{ color: THEME.ink }}>{formatRupiah(ahspFinalHarga(a.komponen, overheadProfit))}</b>
+            </p>
+            <div className="flex items-center gap-1.5 mt-2">
+              <button type="button" onClick={() => { setEditing(a); setShowForm(true); }}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded att-mono text-[11px] font-semibold" style={{ border: `1px solid ${THEME.line}`, color: THEME.ink, background: THEME.concrete }}>
+                <Edit3 size={12} /> Edit
+              </button>
+              {confirmDelete === a.id ? (
+                <button type="button" onClick={() => { onDelete(a.id); setConfirmDelete(null); }} className="p-1.5 rounded ml-auto" style={{ background: THEME.rust }}>
+                  <Check size={13} color={THEME.paper} />
+                </button>
+              ) : (
+                <button type="button" onClick={() => setConfirmDelete(a.id)} className="p-1.5 rounded ml-auto" style={{ background: THEME.concrete }}>
+                  <Trash2 size={13} color={THEME.rust} />
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+        {filtered.length === 0 && (
+          <p className="att-body text-sm text-center py-6" style={{ color: THEME.inkSoft }}>Belum ada item AHSP. Tap "Tambah Item" untuk mulai.</p>
+        )}
+      </div>
+
+      {showForm && (
+        <AhspMasterForm initial={editing} overheadProfit={overheadProfit} upahRates={company.upahPekerja || {}} onSave={handleSave} onCancel={() => { setShowForm(false); setEditing(null); }} />
+      )}
+    </div>
+  );
+}
+
+function AhspPickerModal({ ahspList, overheadProfit, onPick, onCancel }) {
+  const [search, setSearch] = useState('');
+  const filtered = ahspList.filter((a) =>
+    !search.trim() || a.uraian.toLowerCase().includes(search.toLowerCase()) || a.kode.toLowerCase().includes(search.toLowerCase())
+  );
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-4" style={{ background: 'rgba(13,25,48,0.75)' }}>
+      <div className="w-full max-w-md rounded-xl p-4 att-body max-h-[85vh] overflow-y-auto" style={{ background: THEME.paper }}>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-bold text-sm" style={{ color: THEME.ink }}>Pilih dari Master AHSP</h3>
+          <button type="button" onClick={onCancel}><X size={18} color={THEME.inkSoft} /></button>
+        </div>
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari kode atau uraian pekerjaan..."
+          className="w-full px-3 py-2 rounded att-body text-sm outline-none mb-3" style={{ background: THEME.concrete, color: THEME.ink }} />
+        <div className="space-y-1.5">
+          {filtered.map((a) => (
+            <button key={a.id} type="button" onClick={() => onPick(a)}
+              className="w-full text-left p-2.5 rounded-lg" style={{ background: THEME.concrete }}>
+              <p className="att-mono text-[10px]" style={{ color: THEME.amber }}>{a.kode}</p>
+              <p className="att-body text-sm font-semibold" style={{ color: THEME.ink }}>{a.uraian}</p>
+              <p className="att-mono text-[10.5px] mt-0.5" style={{ color: THEME.inkSoft }}>
+                {a.satuan} &middot; {formatRupiah(ahspFinalHarga(a.komponen, overheadProfit))}
+              </p>
+            </button>
+          ))}
+          {filtered.length === 0 && (
+            <p className="att-body text-sm text-center py-6" style={{ color: THEME.inkSoft }}>
+              Tidak ada item AHSP yang cocok. Tambahkan dulu lewat tab "AHSP Master".
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function penawaranTotal(items) {
+  return (items || []).reduce((s, it) => s + (Number(it.volume) || 0) * (Number(it.hargaSatuan) || 0), 0);
+}
+
+function penawaranBreakdown(p) {
+  const subtotal = penawaranTotal(p.items);
+  const ppn = p.includePPN ? subtotal * 0.11 : 0;
+  return { subtotal, ppn, grandTotal: subtotal + ppn };
+}
+
+function penawaranHtml(p) {
+  const items = p.items || [];
+  const rows = items.map((it, i) => `
+    <tr>
+      <td style="text-align:center;">${i + 1}</td>
+      <td>${escapeHtml(it.uraian)}</td>
+      <td style="text-align:center;">${escapeHtml(it.kodeAhsp || '-')}</td>
+      <td style="text-align:center;">${it.volume}</td>
+      <td style="text-align:center;">${escapeHtml(it.satuan)}</td>
+      <td style="text-align:right;">${formatRupiah(it.hargaSatuan)}</td>
+      <td style="text-align:right;">${formatRupiah((Number(it.volume) || 0) * (Number(it.hargaSatuan) || 0))}</td>
+    </tr>`).join('');
+  const { subtotal, ppn, grandTotal } = penawaranBreakdown(p);
+  return `
+    <p><b>No</b>: ${escapeHtml(p.nomorSurat || '-')}<br/>
+    <b>Tanggal</b>: ${escapeHtml(p.tanggal || '-')}<br/>
+    <b>Kepada Yth.</b>: ${escapeHtml(p.namaKlien || '-')}<br/>
+    <b>Perihal</b>: Penawaran Harga — ${escapeHtml(p.perihal || '-')}</p>
+    <p>${escapeHtml(p.pembuka || 'Dengan hormat, bersama ini kami sampaikan penawaran harga untuk pekerjaan tersebut di atas sebagai berikut:')}</p>
+    <table style="width:100%;border-collapse:collapse;font-size:0.85em;" border="1" cellpadding="5">
+      <thead><tr style="background:#eee;"><th>No</th><th>Uraian Pekerjaan</th><th>Kode AHSP</th><th>Vol.</th><th>Satuan</th><th>Harga Satuan</th><th>Jumlah</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot>
+        <tr><td colspan="6" style="text-align:right;">Subtotal</td><td style="text-align:right;">${formatRupiah(subtotal)}</td></tr>
+        ${p.includePPN ? `<tr><td colspan="6" style="text-align:right;">PPN 11%</td><td style="text-align:right;">${formatRupiah(ppn)}</td></tr>` : ''}
+        <tr style="font-weight:bold;"><td colspan="6" style="text-align:right;">TOTAL</td><td style="text-align:right;">${formatRupiah(grandTotal)}</td></tr>
+      </tfoot>
+    </table>
+    <p style="font-style:italic;">Terbilang: ${terbilang(grandTotal)}</p>
+    ${p.syarat ? `<p><b>Syarat & Ketentuan:</b><br/>${escapeHtml(p.syarat).replace(/\n/g, '<br/>')}</p>` : ''}
+    <p style="margin-top:40px;">Hormat kami,</p>
+    <p style="margin-top:60px;">${escapeHtml(CURRENT_COMPANY.name || '-')}</p>
+  `;
+}
+
+function exportPenawaranPDF(p) {
+  try {
+    const doc = new window.jspdf.jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+    let y = pdfAddHeader(doc, 'Surat Penawaran', p.nomorSurat);
+
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(...PDF_INK);
+    doc.text(`Tanggal: ${p.tanggal || '-'}`, 40, y);
+    doc.text(`Kepada Yth.: ${p.namaKlien || '-'}`, 40, y + 14);
+    doc.text(`Perihal: Penawaran Harga — ${p.perihal || '-'}`, 40, y + 28);
+    y += 46;
+
+    doc.setFontSize(9);
+    const openText = p.pembuka || 'Dengan hormat, bersama ini kami sampaikan penawaran harga untuk pekerjaan tersebut di atas sebagai berikut:';
+    const openLines = doc.splitTextToSize(openText, 515);
+    doc.text(openLines, 40, y);
+    y += openLines.length * 12 + 10;
+
+    const items = p.items || [];
+    const body = items.map((it, i) => [
+      String(i + 1), it.uraian, it.kodeAhsp || '-', String(it.volume), it.satuan, formatRupiah(it.hargaSatuan),
+      formatRupiah((Number(it.volume) || 0) * (Number(it.hargaSatuan) || 0)),
+    ]);
+    const { subtotal, ppn, grandTotal } = penawaranBreakdown(p);
+    const footRows = [['', '', '', '', '', 'Subtotal', formatRupiah(subtotal)]];
+    if (p.includePPN) footRows.push(['', '', '', '', '', 'PPN 11%', formatRupiah(ppn)]);
+    footRows.push(['', '', '', '', '', 'TOTAL', formatRupiah(grandTotal)]);
+    doc.autoTable({
+      startY: y, margin: { left: 40, right: 40 },
+      head: [['No', 'Uraian Pekerjaan', 'Kode AHSP', 'Vol.', 'Satuan', 'Harga Satuan', 'Jumlah']],
+      body,
+      foot: footRows,
+      styles: { fontSize: 8, textColor: PDF_INK },
+      headStyles: { fillColor: PDF_NAVY, textColor: [242, 236, 217] },
+      footStyles: { fillColor: [241, 236, 221], textColor: PDF_NAVY, fontStyle: 'bold' },
+      columnStyles: { 1: { cellWidth: 140 } },
+      alternateRowStyles: { fillColor: [250, 248, 241] },
+    });
+    y = doc.lastAutoTable.finalY + 16;
+
+    doc.setFont('helvetica', 'italic'); doc.setFontSize(9); doc.setTextColor(...PDF_SLATE);
+    const terbilangLines = doc.splitTextToSize(`Terbilang: ${terbilang(grandTotal)}`, 515);
+    doc.text(terbilangLines, 40, y);
+    y += terbilangLines.length * 12 + 12;
+
+    if (p.syarat) {
+      if (y > 680) { doc.addPage(); y = 40; }
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(...PDF_NAVY);
+      doc.text('Syarat & Ketentuan:', 40, y);
+      y += 14;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...PDF_INK);
+      const syaratLines = doc.splitTextToSize(p.syarat, 515);
+      doc.text(syaratLines, 40, y);
+      y += syaratLines.length * 11 + 20;
+    }
+
+    if (y > 680) { doc.addPage(); y = 40; }
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(...PDF_INK);
+    doc.text('Hormat kami,', 40, y);
+    doc.setFont('helvetica', 'bold');
+    doc.text(CURRENT_COMPANY.name || '-', 40, y + 56);
+
+    pdfFinishAllPages(doc);
+    doc.save(`penawaran-${(p.nomorSurat || 'draft').replace(/[\/\s]+/g, '-').toLowerCase()}.pdf`);
+  } catch (err) {
+    console.error('Gagal ekspor PDF Penawaran:', err);
+    alert('Gagal membuat file PDF. Coba lagi.');
+  }
+}
+
+function ahspItemsUsedIn(p, ahspList) {
+  const kodeSet = new Set((p.items || []).map((it) => it.kodeAhsp).filter(Boolean));
+  return ahspList.filter((a) => kodeSet.has(a.kode));
+}
+
+function exportAhspAnalysisPDF(p, ahspList, overheadProfit) {
+  try {
+    const usedAhsp = ahspItemsUsedIn(p, ahspList);
+    if (usedAhsp.length === 0) {
+      alert('Tidak ada item di penawaran ini yang memakai kode AHSP dari Master. Tidak ada yang bisa dicetak.');
+      return;
+    }
+    const doc = new window.jspdf.jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+    let y = pdfAddHeader(doc, 'Lampiran Analisa Harga Satuan Pekerjaan', p.nomorSurat || p.perihal);
+
+    usedAhsp.forEach((a, idx) => {
+      if (idx > 0 && y > 620) { doc.addPage(); y = 40; }
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...PDF_NAVY);
+      doc.text(`${a.kode} — ${a.uraian}`, 40, y);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...PDF_SLATE);
+      doc.text(`Satuan: ${a.satuan}  |  Sumber: ${a.sumber || '-'}`, 40, y + 12);
+      y += 24;
+
+      const body = (a.komponen || []).map((k) => [
+        AHSP_JENIS_LABEL[k.jenis] || k.jenis, k.nama, String(k.koefisien), formatRupiah(k.hargaSatuan),
+        formatRupiah((Number(k.koefisien) || 0) * (Number(k.hargaSatuan) || 0)),
+      ]);
+      const base = ahspBaseHarga(a.komponen);
+      const final = ahspFinalHarga(a.komponen, overheadProfit);
+      doc.autoTable({
+        startY: y, margin: { left: 40, right: 40 },
+        head: [['Jenis', 'Uraian', 'Koefisien', 'Harga Satuan', 'Jumlah']],
+        body,
+        foot: [
+          ['', '', '', 'Harga Dasar', formatRupiah(base)],
+          ['', '', '', `Overhead & Profit (${overheadProfit}%)`, formatRupiah(final - base)],
+          ['', '', '', 'HARGA SATUAN AKHIR', formatRupiah(final)],
+        ],
+        styles: { fontSize: 8, textColor: PDF_INK },
+        headStyles: { fillColor: PDF_NAVY, textColor: [242, 236, 217] },
+        footStyles: { fillColor: [241, 236, 221], textColor: PDF_NAVY, fontStyle: 'bold', fontSize: 7.5 },
+        alternateRowStyles: { fillColor: [250, 248, 241] },
+      });
+      y = doc.lastAutoTable.finalY + 26;
+    });
+
+    pdfFinishAllPages(doc);
+    doc.save(`analisa-ahsp-${(p.nomorSurat || 'draft').replace(/[\/\s]+/g, '-').toLowerCase()}.pdf`);
+  } catch (err) {
+    console.error('Gagal ekspor PDF Analisa AHSP:', err);
+    alert('Gagal membuat file PDF. Coba lagi.');
+  }
+}
+
+function ahspAnalysisHtml(p, ahspList, overheadProfit) {
+  const usedAhsp = ahspItemsUsedIn(p, ahspList);
+  const sections = usedAhsp.map((a) => {
+    const rows = (a.komponen || []).map((k) => `
+      <tr>
+        <td>${escapeHtml(AHSP_JENIS_LABEL[k.jenis] || k.jenis)}</td>
+        <td>${escapeHtml(k.nama)}</td>
+        <td style="text-align:center;">${k.koefisien}</td>
+        <td style="text-align:right;">${formatRupiah(k.hargaSatuan)}</td>
+        <td style="text-align:right;">${formatRupiah((Number(k.koefisien) || 0) * (Number(k.hargaSatuan) || 0))}</td>
+      </tr>`).join('');
+    const base = ahspBaseHarga(a.komponen);
+    const final = ahspFinalHarga(a.komponen, overheadProfit);
+    return `
+      <p style="margin-bottom:2px;"><b>${escapeHtml(a.kode)} — ${escapeHtml(a.uraian)}</b></p>
+      <p style="font-size:0.8em;margin-top:0;">Satuan: ${escapeHtml(a.satuan)} | Sumber: ${escapeHtml(a.sumber || '-')}</p>
+      <table style="width:100%;border-collapse:collapse;font-size:0.82em;margin-bottom:18px;" border="1" cellpadding="5">
+        <thead><tr style="background:#eee;"><th>Jenis</th><th>Uraian</th><th>Koefisien</th><th>Harga Satuan</th><th>Jumlah</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot>
+          <tr><td colspan="4" style="text-align:right;">Harga Dasar</td><td style="text-align:right;">${formatRupiah(base)}</td></tr>
+          <tr><td colspan="4" style="text-align:right;">Overhead & Profit (${overheadProfit}%)</td><td style="text-align:right;">${formatRupiah(final - base)}</td></tr>
+          <tr style="font-weight:bold;"><td colspan="4" style="text-align:right;">HARGA SATUAN AKHIR</td><td style="text-align:right;">${formatRupiah(final)}</td></tr>
+        </tfoot>
+      </table>`;
+  }).join('');
+  return `<p>Lampiran Analisa Harga Satuan Pekerjaan untuk: <b>${escapeHtml(p.perihal || '-')}</b></p>${sections || '<p>Tidak ada item yang memakai kode AHSP dari Master.</p>'}`;
+}
+
+function emptyPenawaranItem() {
+  return { id: uid(), uraian: '', kodeAhsp: '', volume: '', satuan: '', hargaSatuan: '' };
+}
+
+function PenawaranForm({ onSave, onCancel, initial, ahspList, overheadProfit, projects }) {
+  const [nomorSurat, setNomorSurat] = useState(initial?.nomorSurat || '');
+  const [tanggal, setTanggal] = useState(initial?.tanggal || new Date().toISOString().slice(0, 10));
+  const [namaKlien, setNamaKlien] = useState(initial?.namaKlien || '');
+  const [projectId, setProjectId] = useState(initial?.projectId || '');
+  const [perihal, setPerihal] = useState(initial?.perihal || '');
+  const [pembuka, setPembuka] = useState(initial?.pembuka || '');
+  const [items, setItems] = useState(initial?.items?.length ? initial.items : [emptyPenawaranItem()]);
+  const [syarat, setSyarat] = useState(initial?.syarat || 'Harga sudah termasuk material dan upah kerja.\nPembayaran: 50% DP, 50% saat serah terima.\nPenawaran berlaku 14 hari sejak tanggal surat.');
+  const [includePPN, setIncludePPN] = useState(initial?.includePPN || false);
+  const [pickerFor, setPickerFor] = useState(null); // id item yang lagi pilih AHSP
+
+  const updateItem = (id, patch) => setItems(items.map((it) => (it.id === id ? { ...it, ...patch } : it)));
+  const addItem = () => setItems([...items, emptyPenawaranItem()]);
+  const removeItem = (id) => setItems(items.filter((it) => it.id !== id));
+  const { subtotal, ppn, grandTotal } = penawaranBreakdown({ items, includePPN });
+
+  const handlePickAhsp = (ahspItem) => {
+    updateItem(pickerFor, {
+      uraian: ahspItem.uraian, kodeAhsp: ahspItem.kode, satuan: ahspItem.satuan,
+      hargaSatuan: Math.round(ahspFinalHarga(ahspItem.komponen, overheadProfit)),
+    });
+    setPickerFor(null);
+  };
+
+  const handleSave = async () => {
+    if (!namaKlien.trim() || items.every((it) => !it.uraian.trim())) {
+      alert('Isi minimal nama klien dan 1 uraian pekerjaan.');
+      return;
+    }
+    await onSave({
+      id: initial?.id || uid(), nomorSurat: nomorSurat.trim(), tanggal, namaKlien: namaKlien.trim(), projectId,
+      perihal: perihal.trim(), pembuka: pembuka.trim(), syarat: syarat.trim(), includePPN,
+      items: items.filter((it) => it.uraian.trim()).map((it) => ({ ...it, volume: Number(it.volume) || 0, hargaSatuan: Number(it.hargaSatuan) || 0 })),
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4" style={{ background: 'rgba(13,25,48,0.7)' }}>
+      <div className="w-full max-w-md rounded-xl p-4 att-body max-h-[92vh] overflow-y-auto" style={{ background: THEME.paper }}>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-bold text-sm" style={{ color: THEME.ink }}>{initial ? 'Edit' : 'Buat'} Surat Penawaran</h3>
+          <button type="button" onClick={onCancel}><X size={18} color={THEME.inkSoft} /></button>
+        </div>
+        <div className="grid grid-cols-2 gap-2 mb-2">
+          <input value={nomorSurat} onChange={(e) => setNomorSurat(e.target.value)} placeholder="No. Surat (opsional)"
+            className="px-3 py-2 rounded att-body text-sm outline-none" style={{ background: THEME.concrete, color: THEME.ink }} />
+          <input type="date" value={tanggal} onChange={(e) => setTanggal(e.target.value)}
+            className="px-3 py-2 rounded att-body text-sm outline-none" style={{ background: THEME.concrete, color: THEME.ink }} />
+        </div>
+        <input value={namaKlien} onChange={(e) => setNamaKlien(e.target.value)} placeholder="Kepada Yth. (nama klien/perusahaan)"
+          className="w-full px-3 py-2 rounded att-body text-sm outline-none mb-2" style={{ background: THEME.concrete, color: THEME.ink }} />
+        <select value={projectId} onChange={(e) => setProjectId(e.target.value)}
+          className="w-full px-3 py-2 rounded att-body text-sm outline-none mb-2" style={{ background: THEME.concrete, color: THEME.ink }}>
+          <option value="">— Hubungkan ke Proyek (opsional, untuk Progres Proyek) —</option>
+          {projects.map((pr) => <option key={pr.id} value={pr.id}>{pr.name}</option>)}
+        </select>
+        <input value={perihal} onChange={(e) => setPerihal(e.target.value)} placeholder="Perihal (nama pekerjaan/proyek)"
+          className="w-full px-3 py-2 rounded att-body text-sm outline-none mb-2" style={{ background: THEME.concrete, color: THEME.ink }} />
+        <textarea value={pembuka} onChange={(e) => setPembuka(e.target.value)} rows={2} placeholder="Kalimat pembuka (opsional, ada default kalau kosong)"
+          className="w-full px-3 py-2 rounded att-body text-xs outline-none mb-3" style={{ background: THEME.concrete, color: THEME.ink }} />
+
+        <p className="att-mono text-[10px] mb-2" style={{ color: THEME.inkSoft }}>DAFTAR PEKERJAAN</p>
+        <div className="space-y-2 mb-2">
+          {items.map((it) => (
+            <div key={it.id} className="p-2.5 rounded-lg" style={{ background: THEME.concrete }}>
+              <div className="flex gap-1.5 mb-1.5">
+                <input value={it.uraian} onChange={(e) => updateItem(it.id, { uraian: e.target.value })} placeholder="Uraian pekerjaan"
+                  className="flex-1 px-2 py-1.5 rounded att-body text-xs outline-none" style={{ background: THEME.paper, color: THEME.ink }} />
+                <button type="button" onClick={() => setPickerFor(it.id)} title="Pilih dari AHSP Master" className="p-1.5 rounded shrink-0" style={{ background: THEME.amberSoft }}>
+                  <Receipt size={13} color={THEME.charcoal} />
+                </button>
+                <button type="button" onClick={() => removeItem(it.id)} className="p-1.5 rounded shrink-0" style={{ background: THEME.paper }}>
+                  <Trash2 size={13} color={THEME.rust} />
+                </button>
+              </div>
+              {it.kodeAhsp && (
+                <p className="att-mono text-[10px] mb-1.5" style={{ color: THEME.amber }}>Kode AHSP: {it.kodeAhsp}</p>
+              )}
+              <DimensiCalculator onApply={(hasil) => updateItem(it.id, { volume: String(hasil) })} />
+              <div className="grid grid-cols-3 gap-1.5">
+                <input value={it.volume} onChange={(e) => updateItem(it.id, { volume: e.target.value.replace(/[^0-9.]/g, '') })} placeholder="Vol." inputMode="decimal"
+                  className="px-2 py-1.5 rounded att-mono text-xs outline-none" style={{ background: THEME.paper, color: THEME.ink }} />
+                <input value={it.satuan} onChange={(e) => updateItem(it.id, { satuan: e.target.value })} placeholder="Satuan"
+                  className="px-2 py-1.5 rounded att-mono text-xs outline-none" style={{ background: THEME.paper, color: THEME.ink }} />
+                <input value={it.hargaSatuan} onChange={(e) => updateItem(it.id, { hargaSatuan: e.target.value.replace(/[^0-9]/g, ''), kodeAhsp: '' })} placeholder="Harga satuan" inputMode="numeric"
+                  className="px-2 py-1.5 rounded att-mono text-xs outline-none" style={{ background: THEME.paper, color: THEME.ink }} />
+              </div>
+              {it.volume && it.hargaSatuan && (
+                <div className="flex items-center justify-between mt-1">
+                  <p className="att-mono text-[10px]" style={{ color: THEME.amber }}>= {formatRupiah((Number(it.volume) || 0) * (Number(it.hargaSatuan) || 0))}</p>
+                  <p className="att-mono text-[10px]" style={{ color: THEME.inkSoft }}>
+                    Bobot: {subtotal > 0 ? (((Number(it.volume) || 0) * (Number(it.hargaSatuan) || 0) / subtotal) * 100).toFixed(1) : '0.0'}%
+                  </p>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        <button type="button" onClick={addItem}
+          className="w-full flex items-center justify-center gap-1.5 py-2 rounded att-mono text-xs font-semibold mb-3"
+          style={{ border: `1px dashed ${THEME.line}`, color: THEME.inkSoft }}>
+          <Plus size={13} /> Tambah Baris Pekerjaan
+        </button>
+
+        <label className="flex items-center gap-2 mb-2 px-1">
+          <input type="checkbox" checked={includePPN} onChange={(e) => setIncludePPN(e.target.checked)} className="w-4 h-4" />
+          <span className="att-body text-sm" style={{ color: THEME.ink }}>Tambahkan PPN 11%</span>
+        </label>
+
+        <div className="p-2.5 rounded-lg mb-3" style={{ background: THEME.charcoal }}>
+          <div className="flex items-center justify-between">
+            <span className="att-mono text-[11px]" style={{ color: THEME.paper }}>Subtotal</span>
+            <span className="att-mono text-xs" style={{ color: THEME.paper }}>{formatRupiah(subtotal)}</span>
+          </div>
+          {includePPN && (
+            <div className="flex items-center justify-between mt-1">
+              <span className="att-mono text-[11px]" style={{ color: THEME.paper }}>PPN 11%</span>
+              <span className="att-mono text-xs" style={{ color: THEME.paper }}>{formatRupiah(ppn)}</span>
+            </div>
+          )}
+          <div className="flex items-center justify-between mt-1.5 pt-1.5" style={{ borderTop: `1px solid rgba(233,222,190,0.2)` }}>
+            <span className="att-mono text-xs" style={{ color: THEME.amber }}>TOTAL</span>
+            <span className="att-body font-bold text-sm" style={{ color: THEME.amber }}>{formatRupiah(grandTotal)}</span>
+          </div>
+        </div>
+
+        <p className="att-mono text-[10px] mb-1.5" style={{ color: THEME.inkSoft }}>SYARAT & KETENTUAN</p>
+        <textarea value={syarat} onChange={(e) => setSyarat(e.target.value)} rows={3}
+          className="w-full px-3 py-2 rounded att-body text-xs outline-none mb-3" style={{ background: THEME.concrete, color: THEME.ink }} />
+
+        <button type="button" onClick={handleSave}
+          className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded font-semibold text-sm"
+          style={{ background: THEME.amber, color: THEME.charcoal }}>
+          <Check size={15} /> Simpan Penawaran
+        </button>
+      </div>
+
+      {pickerFor && (
+        <AhspPickerModal ahspList={ahspList} overheadProfit={overheadProfit} onPick={handlePickAhsp} onCancel={() => setPickerFor(null)} />
+      )}
+    </div>
+  );
+}
+
+const CLIENT_JENIS_LABEL = { perorangan: 'Perorangan', perusahaan: 'Perusahaan', instansi: 'Instansi Pemerintah' };
+const CLIENT_STATUS_LABEL = { prospek: 'Prospek', aktif: 'Aktif', selesai: 'Selesai' };
+const CLIENT_STATUS_COLORS = { prospek: '#C9A227', aktif: '#2F7A52', selesai: '#5B6478' };
+const CLIENT_SUMBER_LIST = ['Website', 'Referensi', 'Datang Langsung', 'Media Sosial', 'Lainnya'];
+
+function emptyClientForm() {
+  return {
+    nama: '', jenis: 'perusahaan', pic: '', jabatanPic: '', hp: '', email: '', alamat: '', npwp: '',
+    status: 'prospek', sumber: CLIENT_SUMBER_LIST[0], projectId: '', catatan: '',
+  };
+}
+
+function exportClientPDF(c, projects) {
+  try {
+    const doc = new window.jspdf.jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+    let y = pdfAddHeader(doc, 'Profil Klien', c.nama);
+
+    const project = projects.find((p) => p.id === c.projectId);
+    const rows = [
+      ['Nama', c.nama || '-'], ['Jenis', CLIENT_JENIS_LABEL[c.jenis] || '-'], ['Status', CLIENT_STATUS_LABEL[c.status] || '-'],
+      ['PIC', c.pic || '-'], ['Jabatan PIC', c.jabatanPic || '-'], ['No. HP', c.hp || '-'], ['Email', c.email || '-'],
+      ['Alamat', c.alamat || '-'], ['NPWP', c.npwp || '-'], ['Sumber', c.sumber || '-'], ['Proyek Terkait', project?.name || '-'],
+    ];
+    doc.autoTable({
+      startY: y, margin: { left: 40, right: 40 }, theme: 'plain',
+      body: rows, styles: { fontSize: 9.5, textColor: PDF_INK, cellPadding: { top: 5, bottom: 5, left: 0, right: 0 } },
+      columnStyles: { 0: { textColor: PDF_SLATE, cellWidth: 110 }, 1: { fontStyle: 'bold', textColor: PDF_NAVY } },
+    });
+    y = doc.lastAutoTable.finalY + 16;
+
+    if (c.catatan) {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(...PDF_NAVY);
+      doc.text('Catatan:', 40, y);
+      y += 14;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...PDF_INK);
+      const catatanLines = doc.splitTextToSize(c.catatan, 515);
+      doc.text(catatanLines, 40, y);
+    }
+
+    pdfFinishAllPages(doc);
+    doc.save(`klien-${(c.nama || 'profil').replace(/\s+/g, '-').toLowerCase()}.pdf`);
+  } catch (err) {
+    console.error('Gagal ekspor PDF Klien:', err);
+    alert('Gagal membuat file PDF. Coba lagi.');
+  }
+}
+
+function ClientForm({ onSave, onCancel, initial, projects }) {
+  const [form, setForm] = useState(initial || emptyClientForm());
+
+  const handleSave = async () => {
+    if (!form.nama.trim()) {
+      alert('Isi nama klien/perusahaan dulu.');
+      return;
+    }
+    await onSave({ ...form, id: initial?.id || uid(), nama: form.nama.trim() });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4" style={{ background: 'rgba(13,25,48,0.7)' }}>
+      <div className="w-full max-w-md rounded-xl p-4 att-body max-h-[92vh] overflow-y-auto" style={{ background: THEME.paper }}>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-bold text-sm" style={{ color: THEME.ink }}>{initial ? 'Edit' : 'Tambah'} Klien</h3>
+          <button type="button" onClick={onCancel}><X size={18} color={THEME.inkSoft} /></button>
+        </div>
+        <input value={form.nama} onChange={(e) => setForm({ ...form, nama: e.target.value })} placeholder="Nama klien / perusahaan"
+          className="w-full px-3 py-2 rounded att-body text-sm outline-none mb-2" style={{ background: THEME.concrete, color: THEME.ink }} />
+        <div className="grid grid-cols-2 gap-2 mb-2">
+          <select value={form.jenis} onChange={(e) => setForm({ ...form, jenis: e.target.value })}
+            className="px-3 py-2 rounded att-mono text-xs outline-none" style={{ background: THEME.concrete, color: THEME.ink }}>
+            {Object.entries(CLIENT_JENIS_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+          <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}
+            className="px-3 py-2 rounded att-mono text-xs outline-none" style={{ background: THEME.concrete, color: THEME.ink }}>
+            {Object.entries(CLIENT_STATUS_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+        </div>
+        <div className="grid grid-cols-2 gap-2 mb-2">
+          <input value={form.pic} onChange={(e) => setForm({ ...form, pic: e.target.value })} placeholder="Nama PIC"
+            className="px-3 py-2 rounded att-body text-sm outline-none" style={{ background: THEME.concrete, color: THEME.ink }} />
+          <input value={form.jabatanPic} onChange={(e) => setForm({ ...form, jabatanPic: e.target.value })} placeholder="Jabatan PIC"
+            className="px-3 py-2 rounded att-body text-sm outline-none" style={{ background: THEME.concrete, color: THEME.ink }} />
+        </div>
+        <div className="grid grid-cols-2 gap-2 mb-2">
+          <input value={form.hp} onChange={(e) => setForm({ ...form, hp: e.target.value })} placeholder="No. HP"
+            className="px-3 py-2 rounded att-body text-sm outline-none" style={{ background: THEME.concrete, color: THEME.ink }} />
+          <input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="Email"
+            className="px-3 py-2 rounded att-body text-sm outline-none" style={{ background: THEME.concrete, color: THEME.ink }} />
+        </div>
+        <input value={form.alamat} onChange={(e) => setForm({ ...form, alamat: e.target.value })} placeholder="Alamat"
+          className="w-full px-3 py-2 rounded att-body text-sm outline-none mb-2" style={{ background: THEME.concrete, color: THEME.ink }} />
+        <div className="grid grid-cols-2 gap-2 mb-2">
+          <input value={form.npwp} onChange={(e) => setForm({ ...form, npwp: e.target.value })} placeholder="NPWP (opsional)"
+            className="px-3 py-2 rounded att-mono text-xs outline-none" style={{ background: THEME.concrete, color: THEME.ink }} />
+          <select value={form.sumber} onChange={(e) => setForm({ ...form, sumber: e.target.value })}
+            className="px-3 py-2 rounded att-mono text-xs outline-none" style={{ background: THEME.concrete, color: THEME.ink }}>
+            {CLIENT_SUMBER_LIST.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+        <select value={form.projectId} onChange={(e) => setForm({ ...form, projectId: e.target.value })}
+          className="w-full px-3 py-2 rounded att-body text-sm outline-none mb-2" style={{ background: THEME.concrete, color: THEME.ink }}>
+          <option value="">— Hubungkan ke Proyek (opsional) —</option>
+          {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <textarea value={form.catatan} onChange={(e) => setForm({ ...form, catatan: e.target.value })} rows={3} placeholder="Catatan / riwayat komunikasi (opsional)"
+          className="w-full px-3 py-2 rounded att-body text-xs outline-none mb-3" style={{ background: THEME.concrete, color: THEME.ink }} />
+
+        <button type="button" onClick={handleSave}
+          className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded font-semibold text-sm"
+          style={{ background: THEME.amber, color: THEME.charcoal }}>
+          <Check size={15} /> Simpan Klien
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ClientTab({ clients, onAdd, onUpdate, onDelete, projects }) {
+  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [search, setSearch] = useState('');
+  const [filterStatus, setFilterStatus] = useState('all');
+
+  const filtered = clients.filter((c) => {
+    const matchSearch = !search.trim() || c.nama.toLowerCase().includes(search.toLowerCase()) || (c.pic || '').toLowerCase().includes(search.toLowerCase());
+    const matchStatus = filterStatus === 'all' || c.status === filterStatus;
+    return matchSearch && matchStatus;
+  });
+
+  const handleSave = async (data) => {
+    if (editing) await onUpdate(editing.id, data);
+    else await onAdd(data);
+    setShowForm(false);
+    setEditing(null);
+  };
+
+  return (
+    <div className="p-4 pb-24">
+      <div className="flex items-center justify-between mb-3">
+        <p className="att-mono text-xs" style={{ color: THEME.inkSoft }}>DATA KLIEN ({clients.length})</p>
+        <button type="button" onClick={() => { setEditing(null); setShowForm(true); }}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded att-mono text-xs font-semibold" style={{ background: THEME.amber, color: THEME.charcoal }}>
+          <Plus size={13} /> Tambah Klien
+        </button>
+      </div>
+
+      <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari nama klien atau PIC..."
+        className="w-full px-3 py-2 rounded att-body text-sm outline-none mb-2" style={{ background: THEME.paper, color: THEME.ink, border: `1px solid ${THEME.line}` }} />
+      <div className="flex gap-1.5 mb-3 overflow-x-auto">
+        {['all', 'prospek', 'aktif', 'selesai'].map((s) => (
+          <button key={s} type="button" onClick={() => setFilterStatus(s)}
+            className="px-3 py-1.5 rounded att-mono text-[11px] font-semibold shrink-0"
+            style={{ background: filterStatus === s ? THEME.amber : THEME.concrete, color: filterStatus === s ? THEME.charcoal : THEME.inkSoft }}>
+            {s === 'all' ? 'Semua' : CLIENT_STATUS_LABEL[s]}
+          </button>
+        ))}
+      </div>
+
+      <div className="space-y-2">
+        {filtered.map((c) => (
+          <div key={c.id} className="p-3 rounded-lg" style={{ background: THEME.paper, border: `1px solid ${THEME.line}` }}>
+            <div className="flex items-start justify-between mb-1">
+              <div className="min-w-0">
+                <p className="att-body font-semibold text-sm truncate" style={{ color: THEME.ink }}>{c.nama}</p>
+                <p className="att-mono text-[11px]" style={{ color: THEME.inkSoft }}>{CLIENT_JENIS_LABEL[c.jenis]} &middot; {c.pic || '-'}</p>
+              </div>
+              <span className="att-mono text-[9px] px-1.5 py-0.5 rounded-full font-semibold shrink-0" style={{ background: CLIENT_STATUS_COLORS[c.status], color: '#fff' }}>
+                {CLIENT_STATUS_LABEL[c.status]}
+              </span>
+            </div>
+            {(c.hp || c.email) && (
+              <p className="att-mono text-[11px] mb-2" style={{ color: THEME.inkSoft }}>{[c.hp, c.email].filter(Boolean).join(' · ')}</p>
+            )}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button type="button" onClick={() => { setEditing(c); setShowForm(true); }}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded att-mono text-[11px] font-semibold" style={{ border: `1px solid ${THEME.line}`, color: THEME.ink, background: THEME.concrete }}>
+                <Edit3 size={12} /> Edit
+              </button>
+              <button type="button" onClick={() => exportClientPDF(c, projects)}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded att-mono text-[11px] font-semibold" style={{ border: `1px solid ${THEME.line}`, color: THEME.ink, background: THEME.concrete }}>
+                <Save size={12} /> PDF
+              </button>
+              {confirmDelete === c.id ? (
+                <button type="button" onClick={() => { onDelete(c.id); setConfirmDelete(null); }} className="p-1.5 rounded ml-auto" style={{ background: THEME.rust }}>
+                  <Check size={13} color={THEME.paper} />
+                </button>
+              ) : (
+                <button type="button" onClick={() => setConfirmDelete(c.id)} className="p-1.5 rounded ml-auto" style={{ background: THEME.concrete }}>
+                  <Trash2 size={13} color={THEME.rust} />
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+        {filtered.length === 0 && (
+          <p className="att-body text-sm text-center py-6" style={{ color: THEME.inkSoft }}>Belum ada klien. Tap "Tambah Klien" untuk mulai.</p>
+        )}
+      </div>
+
+      {showForm && (
+        <ClientForm initial={editing} projects={projects} onSave={handleSave} onCancel={() => { setShowForm(false); setEditing(null); }} />
+      )}
+    </div>
+  );
+}
+
+function PenawaranTab({ penawaranList, onAdd, onUpdate, onDelete, ahspList, overheadProfit, projects }) {
+  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null);
+
+  const sorted = [...penawaranList].sort((a, b) => (a.tanggal < b.tanggal ? 1 : -1));
+
+  const handleSave = async (data) => {
+    if (editing) await onUpdate(editing.id, data);
+    else await onAdd(data);
+    setShowForm(false);
+    setEditing(null);
+  };
+
+  return (
+    <div className="p-4 pb-24">
+      <div className="flex items-center justify-between mb-3">
+        <p className="att-mono text-xs" style={{ color: THEME.inkSoft }}>SISTEM PENAWARAN / RAB ({sorted.length})</p>
+        <button type="button" onClick={() => { setEditing(null); setShowForm(true); }}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded att-mono text-xs font-semibold" style={{ background: THEME.amber, color: THEME.charcoal }}>
+          <Plus size={13} /> Buat Baru
+        </button>
+      </div>
+
+      <div className="space-y-2">
+        {sorted.map((p) => (
+          <div key={p.id} className="p-3 rounded-lg" style={{ background: THEME.paper, border: `1px solid ${THEME.line}` }}>
+            <div className="flex items-start justify-between mb-1">
+              <div className="min-w-0">
+                <p className="att-body font-semibold text-sm truncate" style={{ color: THEME.ink }}>{p.perihal || '(tanpa perihal)'}</p>
+                <p className="att-mono text-[11px]" style={{ color: THEME.inkSoft }}>Kepada: {p.namaKlien} &middot; {p.tanggal}</p>
+              </div>
+            </div>
+            <p className="att-body font-bold text-sm mb-2" style={{ color: THEME.amber }}>{formatRupiah(penawaranBreakdown(p).grandTotal)}{p.includePPN ? ' (+PPN)' : ''}</p>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button type="button" onClick={() => { setEditing(p); setShowForm(true); }}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded att-mono text-[11px] font-semibold" style={{ border: `1px solid ${THEME.line}`, color: THEME.ink, background: THEME.concrete }}>
+                <Edit3 size={12} /> Edit
+              </button>
+              <button type="button" onClick={() => exportPenawaranPDF(p)}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded att-mono text-[11px] font-semibold" style={{ border: `1px solid ${THEME.line}`, color: THEME.ink, background: THEME.concrete }}>
+                <Save size={12} /> PDF
+              </button>
+              <button type="button" onClick={() => openPrintDocument(`Penawaran - ${p.perihal}`, penawaranHtml(p), false)}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded att-mono text-[11px] font-semibold" style={{ border: `1px solid ${THEME.line}`, color: THEME.ink, background: THEME.concrete }}>
+                <Printer size={12} /> Cetak
+              </button>
+              <button type="button" onClick={() => exportAhspAnalysisPDF(p, ahspList, overheadProfit)}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded att-mono text-[11px] font-semibold" style={{ border: `1px solid ${THEME.amber}`, color: THEME.charcoal, background: THEME.amberSoft }}>
+                <FileBarChart size={12} /> PDF Analisa AHSP
+              </button>
+              <button type="button" onClick={() => openPrintDocument(`Analisa AHSP - ${p.perihal}`, ahspAnalysisHtml(p, ahspList, overheadProfit), false)}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded att-mono text-[11px] font-semibold" style={{ border: `1px solid ${THEME.amber}`, color: THEME.charcoal, background: THEME.amberSoft }}>
+                <Printer size={12} /> Cetak Analisa AHSP
+              </button>
+              {confirmDelete === p.id ? (
+                <button type="button" onClick={() => { onDelete(p.id); setConfirmDelete(null); }} className="p-1.5 rounded ml-auto" style={{ background: THEME.rust }}>
+                  <Check size={13} color={THEME.paper} />
+                </button>
+              ) : (
+                <button type="button" onClick={() => setConfirmDelete(p.id)} className="p-1.5 rounded ml-auto" style={{ background: THEME.concrete }}>
+                  <Trash2 size={13} color={THEME.rust} />
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+        {sorted.length === 0 && (
+          <p className="att-body text-sm text-center py-6" style={{ color: THEME.inkSoft }}>Belum ada penawaran. Tap "Buat Baru" untuk mulai.</p>
+        )}
+      </div>
+
+      {showForm && (
+        <PenawaranForm initial={editing} ahspList={ahspList} overheadProfit={overheadProfit} projects={projects} onSave={handleSave} onCancel={() => { setShowForm(false); setEditing(null); }} />
+      )}
+    </div>
+  );
+}
+
+function filterEntriesByPeriode(entries, periode) {
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
+  if (periode === 'harian') {
+    return entries.filter((e) => e.date === todayStr);
+  }
+  if (periode === 'mingguan') {
+    const weekAgo = new Date(now); weekAgo.setDate(weekAgo.getDate() - 7);
+    const weekAgoStr = weekAgo.toISOString().slice(0, 10);
+    return entries.filter((e) => e.date >= weekAgoStr && e.date <= todayStr);
+  }
+  // bulanan
+  const monthPrefix = todayStr.slice(0, 7); // YYYY-MM
+  return entries.filter((e) => e.date.slice(0, 7) === monthPrefix);
+}
+
+function gambarRekapBobot(doc, yStart, rabItems, allEntries, rabTotalNilai, projectId, sampaiTanggal) {
+  let bobotTotal = 0;
+  const rows = rabItems.map((item) => {
+    const matching = allEntries.filter((e) => e.projectId === projectId && e.uraian === item.uraian && e.date <= sampaiTanggal);
+    const latest = [...matching].sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+    const volSelesai = latest ? Number(latest.volumeSelesai) || 0 : 0;
+    const volTotal = Number(item.volume) || 0;
+    const nilaiItem = volTotal * (Number(item.hargaSatuan) || 0);
+    const bobot = rabTotalNilai > 0 ? (nilaiItem / rabTotalNilai) * 100 : 0;
+    const rasio = volTotal > 0 ? Math.min(1, volSelesai / volTotal) : 0;
+    const bobotTercapai = bobot * rasio;
+    bobotTotal += bobotTercapai;
+    const nilaiTercapai = nilaiItem * rasio;
+    const status = volTotal > 0 && volSelesai >= volTotal ? 'SELESAI' : (volSelesai > 0 ? 'ON PROSES' : 'OFF');
+    return [item.uraian, status, `${volSelesai}/${volTotal} ${item.satuan}`, `${bobot.toFixed(2)}%`, `${bobotTercapai.toFixed(2)}% (${formatRupiah(nilaiTercapai)})`];
+  });
+
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(...PDF_NAVY);
+  doc.text(`Rekap Bobot Pekerjaan (per tanggal ${sampaiTanggal})`, 40, yStart);
+  let y = yStart + 8;
+  doc.autoTable({
+    startY: y, margin: { left: 40, right: 40 },
+    head: [['Uraian Pekerjaan', 'Status', 'Volume', 'Bobot Rencana', 'Bobot Tercapai (+Nilai)']],
+    body: rows,
+    foot: [['', '', '', 'TOTAL BOBOT TERCAPAI', `${bobotTotal.toFixed(2)}% (${formatRupiah(rabTotalNilai * bobotTotal / 100)})`]],
+    styles: { fontSize: 6.5, textColor: PDF_INK },
+    headStyles: { fillColor: PDF_NAVY, textColor: [242, 236, 217] },
+    footStyles: { fillColor: [241, 236, 221], textColor: PDF_NAVY, fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [250, 248, 241] },
+  });
+  return { y: doc.lastAutoTable.finalY + 20, bobotTotal };
+}
+
+function bobotProyekPadaTanggal(rabItems, allEntries, rabTotalNilai, projectId, tanggal) {
+  // Bobot capaian proyek keseluruhan (kumulatif) per tanggal tertentu (inklusif)
+  let total = 0;
+  rabItems.forEach((item) => {
+    const matching = allEntries.filter((e) => e.projectId === projectId && e.uraian === item.uraian && e.date <= tanggal);
+    const latest = [...matching].sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+    const volSelesai = latest ? Number(latest.volumeSelesai) || 0 : 0;
+    const volTotal = Number(item.volume) || 0;
+    if (volTotal <= 0 || rabTotalNilai <= 0) return;
+    const nilaiItem = volTotal * (Number(item.hargaSatuan) || 0);
+    const bobotItem = (nilaiItem / rabTotalNilai) * 100;
+    const rasio = Math.min(1, volSelesai / volTotal);
+    total += bobotItem * rasio;
+  });
+  return total;
+}
+
+function addDaysStr(dateStr, n) {
+  const d = new Date(dateStr);
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+function buildPeriodeBuckets(allEntries, projectId, hariPerBucket) {
+  const projEntries = allEntries.filter((e) => e.projectId === projectId);
+  if (projEntries.length === 0) return [];
+  const startStr = [...projEntries.map((e) => e.date)].sort()[0];
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const totalDays = Math.floor((new Date(todayStr) - new Date(startStr)) / 86400000) + 1;
+  const totalBuckets = Math.max(1, Math.ceil(totalDays / hariPerBucket));
+  const buckets = [];
+  for (let b = 1; b <= totalBuckets; b += 1) {
+    const bStart = addDaysStr(startStr, (b - 1) * hariPerBucket);
+    let bEnd = addDaysStr(startStr, b * hariPerBucket - 1);
+    if (bEnd > todayStr) bEnd = todayStr;
+    buckets.push({ index: b, startStr: bStart, endStr: bEnd });
+  }
+  return buckets;
+}
+
+function hitungRekapBobot(rabItems, allEntries, rabTotalNilai, projectId, sampaiTanggal) {
+  let bobotTotal = 0;
+  let nilaiTotal = 0;
+  const rows = rabItems.map((item) => {
+    const matching = allEntries.filter((e) => e.projectId === projectId && e.uraian === item.uraian && e.date <= sampaiTanggal);
+    const latest = [...matching].sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+    const volSelesai = latest ? Number(latest.volumeSelesai) || 0 : 0;
+    const volTotal = Number(item.volume) || 0;
+    const nilaiItem = volTotal * (Number(item.hargaSatuan) || 0);
+    const bobot = rabTotalNilai > 0 ? (nilaiItem / rabTotalNilai) * 100 : 0;
+    const rasio = volTotal > 0 ? Math.min(1, volSelesai / volTotal) : 0;
+    const bobotTercapai = bobot * rasio;
+    const nilaiTercapai = nilaiItem * rasio;
+    bobotTotal += bobotTercapai;
+    nilaiTotal += nilaiTercapai;
+    const status = volTotal > 0 && volSelesai >= volTotal ? 'SELESAI' : (volSelesai > 0 ? 'ON PROSES' : 'OFF');
+    return { uraian: item.uraian, status, volSelesai, volTotal, satuan: item.satuan, bobot, bobotTercapai, nilaiTercapai };
+  });
+  return { rows, bobotTotal, nilaiTotal };
+}
+
+function bucketLabelDanEntri(project, allEntries, rabItems, rabTotalNilai, periode) {
+  const projectId = project?.id;
+  if (periode === 'harian') {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const entri = allEntries.filter((e) => e.projectId === projectId && e.date === todayStr);
+    return [{ label: `Tanggal ${todayStr}`, endStr: todayStr, entri }];
+  }
+  const hariPerBucket = periode === 'mingguan' ? 7 : 28;
+  const buckets = buildPeriodeBuckets(allEntries, projectId, hariPerBucket);
+  const judul = periode === 'mingguan' ? 'Minggu ke-' : 'Bulan ke-';
+  return buckets.map((b) => ({
+    label: `${judul}${b.index} (${b.startStr} s/d ${b.endStr})`,
+    endStr: b.endStr,
+    entri: allEntries.filter((e) => e.projectId === projectId && e.date >= b.startStr && e.date <= b.endStr).sort((a, c) => (a.date < c.date ? -1 : 1)),
+  }));
+}
+
+function exportLaporanPeriodeExcel(project, allEntries, rabItems, rabTotalNilai, periode) {
+  try {
+    const wb = XLSX.utils.book_new();
+    const bucketList = bucketLabelDanEntri(project, allEntries, rabItems, rabTotalNilai, periode);
+
+    bucketList.forEach((bucket, idx) => {
+      const rekap = hitungRekapBobot(rabItems, allEntries, rabTotalNilai, project?.id, bucket.endStr);
+      const rekapRows = rekap.rows.map((r) => ({
+        'Uraian Pekerjaan': r.uraian, Status: r.status, Volume: `${r.volSelesai}/${r.volTotal} ${r.satuan}`,
+        'Bobot Rencana (%)': Number(r.bobot.toFixed(2)), 'Bobot Tercapai (%)': Number(r.bobotTercapai.toFixed(2)), 'Nilai Tercapai (Rp)': Math.round(r.nilaiTercapai),
+      }));
+      rekapRows.push({ 'Uraian Pekerjaan': 'TOTAL', Status: '', Volume: '', 'Bobot Rencana (%)': '', 'Bobot Tercapai (%)': Number(rekap.bobotTotal.toFixed(2)), 'Nilai Tercapai (Rp)': Math.round(rekap.nilaiTotal) });
+
+      const aktivitasRows = bucket.entri.map((e) => {
+        const bh = bobotHarianEntry(e, allEntries, rabItems, rabTotalNilai);
+        const rabItem = rabItems.find((it) => it.uraian === e.uraian);
+        const hargaSatuan = Number(rabItem?.hargaSatuan) || 0;
+        return {
+          Tanggal: e.date, Uraian: e.uraian || '-', 'Volume Kumulatif': e.satuan ? `${e.volumeSelesai}/${e.volumeTotal} ${e.satuan}` : '-',
+          'Volume Hari Itu': bh ? bh.deltaVolume : '', 'Nilai Hari Itu (Rp)': bh ? Math.round(bh.deltaVolume * hargaSatuan) : '',
+          'Bobot Hari Itu thd Proyek (%)': bh ? Number(bh.bobotHarian.toFixed(2)) : '',
+          'Kumulatif thd Pekerjaan (%)': bh ? Number(bh.persenPekerjaanIni.toFixed(1)) : '',
+          Cuaca: e.cuaca ? CUACA_LIST[e.cuaca]?.label : '', Catatan: e.note || '',
+        };
+      });
+
+      const sheetName = (bucket.label.split(' (')[0]).slice(0, 28) || `Bagian ${idx + 1}`;
+      const sheet = XLSX.utils.json_to_sheet(rekapRows);
+      XLSX.utils.sheet_add_json(sheet, aktivitasRows, { origin: `A${rekapRows.length + 3}`, skipHeader: false });
+      XLSX.utils.book_append_sheet(wb, sheet, sheetName);
+    });
+
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${periode}-${(project?.name || 'proyek').replace(/\s+/g, '-').toLowerCase()}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (err) {
+    console.error('Gagal ekspor Excel laporan:', err);
+    alert('Gagal membuat file Excel. Coba lagi.');
+  }
+}
+
+function laporanPeriodeHtml(project, allEntries, rabItems, rabTotalNilai, periode) {
+  const bucketList = bucketLabelDanEntri(project, allEntries, rabItems, rabTotalNilai, periode);
+  const judulLaporan = { harian: 'Laporan Harian', mingguan: 'Laporan Mingguan', bulanan: 'Laporan Bulanan' }[periode];
+
+  const sections = bucketList.map((bucket) => {
+    const rekap = hitungRekapBobot(rabItems, allEntries, rabTotalNilai, project?.id, bucket.endStr);
+    const rekapRows = rekap.rows.map((r) => `
+      <tr>
+        <td>${escapeHtml(r.uraian)}</td><td>${r.status}</td><td>${r.volSelesai}/${r.volTotal} ${escapeHtml(r.satuan)}</td>
+        <td style="text-align:right;">${r.bobot.toFixed(2)}%</td><td style="text-align:right;">${r.bobotTercapai.toFixed(2)}% (${formatRupiah(r.nilaiTercapai)})</td>
+      </tr>`).join('');
+    const aktivitasRows = bucket.entri.map((e) => {
+      const bh = bobotHarianEntry(e, allEntries, rabItems, rabTotalNilai);
+      return `<tr>
+        <td>${e.date}</td><td>${escapeHtml(e.uraian || '-')}</td>
+        <td>${e.satuan ? `${e.volumeSelesai}/${e.volumeTotal} ${escapeHtml(e.satuan)}` : '-'}</td>
+        <td style="text-align:right;">${bh ? `+${bh.deltaVolume} ${escapeHtml(e.satuan)} (${formatRupiah(bh.deltaVolume * (Number(rabItems.find((it) => it.uraian === e.uraian)?.hargaSatuan) || 0))})` : '-'}</td>
+        <td style="text-align:right;">${bh ? `+${bh.bobotHarian.toFixed(2)}%` : '-'}</td>
+      </tr>`;
+    }).join('');
+    return `
+      <h3 style="margin-bottom:4px;">${escapeHtml(bucket.label)}</h3>
+      <p style="font-size:0.85em;font-weight:bold;margin:8px 0 2px;">Rekap Bobot Pekerjaan (per tanggal ${bucket.endStr})</p>
+      <table style="width:100%;border-collapse:collapse;font-size:0.8em;" border="1" cellpadding="4">
+        <thead><tr style="background:#eee;"><th>Uraian</th><th>Status</th><th>Volume</th><th>Bobot Rencana</th><th>Bobot Tercapai</th></tr></thead>
+        <tbody>${rekapRows}</tbody>
+        <tfoot><tr style="font-weight:bold;"><td colspan="4" style="text-align:right;">TOTAL BOBOT TERCAPAI</td><td style="text-align:right;">${rekap.bobotTotal.toFixed(2)}% (${formatRupiah(rekap.nilaiTotal)})</td></tr></tfoot>
+      </table>
+      <p style="font-size:0.85em;font-weight:bold;margin:12px 0 2px;">Aktivitas (${bucket.entri.length} entri)</p>
+      ${bucket.entri.length === 0 ? '<p style="font-size:0.8em;font-style:italic;">Tidak ada aktivitas pada periode ini.</p>' : `
+      <table style="width:100%;border-collapse:collapse;font-size:0.78em;margin-bottom:18px;" border="1" cellpadding="4">
+        <thead><tr style="background:#eee;"><th>Tanggal</th><th>Uraian</th><th>Volume</th><th>Vol.+Nilai Hari Itu</th><th>Bobot thd Proyek</th></tr></thead>
+        <tbody>${aktivitasRows}</tbody>
+      </table>`}
+    `;
+  }).join('<hr style="margin:18px 0;"/>');
+
+  return `<p><b>${escapeHtml(judulLaporan)}</b> — ${escapeHtml(project?.name || '-')}</p>${sections || '<p>Belum ada aktivitas progres tercatat.</p>'}`;
+}
+
+function exportLaporanPeriodePDF(project, allEntries, rabItems, rabTotalNilai, periode) {
+  try {
+    const doc = new window.jspdf.jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+    const projectId = project?.id;
+    let y;
+
+    if (periode === 'harian') {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const todayEntries = allEntries.filter((e) => e.projectId === projectId && e.date === todayStr);
+      y = pdfAddHeader(doc, 'Laporan Harian', project?.name || '-');
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(...PDF_NAVY);
+      doc.text(`Tanggal: ${todayStr}`, 40, y);
+      y += 18;
+
+      const rekap = gambarRekapBobot(doc, y, rabItems, allEntries, rabTotalNilai, projectId, todayStr);
+      y = rekap.y;
+
+      if (y > 640) { doc.addPage(); y = 40; }
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(...PDF_NAVY);
+      doc.text('Aktivitas Hari Ini', 40, y);
+      y += 8;
+      if (todayEntries.length === 0) {
+        doc.setFont('helvetica', 'italic'); doc.setFontSize(9); doc.setTextColor(...PDF_SLATE);
+        doc.text('Tidak ada aktivitas/foto progres tercatat hari ini.', 40, y + 14);
+      } else {
+        const rows = todayEntries.map((e) => {
+          const bh = bobotHarianEntry(e, allEntries, rabItems, rabTotalNilai);
+          const rabItem = rabItems.find((it) => it.uraian === e.uraian);
+          const hargaSatuan = Number(rabItem?.hargaSatuan) || 0;
+          const nilaiHariIni = bh ? bh.deltaVolume * hargaSatuan : 0;
+          const nilaiKumulatifItem = bh ? (Number(e.volumeSelesai) || 0) * hargaSatuan : 0;
+          return [
+            e.date, e.uraian || '-', e.satuan ? `${e.volumeSelesai}/${e.volumeTotal} ${e.satuan}` : '-',
+            bh ? `+${bh.deltaVolume} ${e.satuan} (${formatRupiah(nilaiHariIni)})` : '-',
+            bh ? `${(bh.bobotHarian / (bh.bobotItem || 1) * 100).toFixed(1)}%` : '-',
+            bh ? `+${bh.bobotHarian.toFixed(2)}% (${formatRupiah(rabTotalNilai * bh.bobotHarian / 100)})` : '-',
+            bh ? `${bh.persenPekerjaanIni.toFixed(1)}%${bh.selesai ? ' ✓' : ''} (${formatRupiah(nilaiKumulatifItem)})` : '-',
+            e.cuaca ? CUACA_LIST[e.cuaca]?.label : '-',
+          ];
+        });
+        doc.autoTable({
+          startY: y + 6, margin: { left: 40, right: 40 },
+          head: [['Tgl', 'Uraian', 'Volume', 'Vol. + Nilai Hari Ini', 'Bobot thd Pekerjaan', 'Bobot + Nilai thd Proyek', 'Kumulatif thd Pekerjaan + Nilai', 'Cuaca']],
+          body: rows,
+          styles: { fontSize: 6, textColor: PDF_INK },
+          headStyles: { fillColor: PDF_NAVY, textColor: [242, 236, 217] },
+          alternateRowStyles: { fillColor: [250, 248, 241] },
+        });
+      }
+      pdfFinishAllPages(doc);
+      doc.save(`harian-${(project?.name || 'proyek').replace(/\s+/g, '-').toLowerCase()}.pdf`);
+      return;
+    }
+
+    // mingguan (7 hari/bucket) atau bulanan (28 hari = 4 minggu/bucket)
+    const hariPerBucket = periode === 'mingguan' ? 7 : 28;
+    const buckets = buildPeriodeBuckets(allEntries, projectId, hariPerBucket);
+    const judulBucket = periode === 'mingguan' ? 'Minggu ke-' : 'Bulan ke-';
+    y = pdfAddHeader(doc, periode === 'mingguan' ? 'Laporan Mingguan' : 'Laporan Bulanan', project?.name || '-');
+
+    if (buckets.length === 0) {
+      doc.setFont('helvetica', 'italic'); doc.setFontSize(9); doc.setTextColor(...PDF_SLATE);
+      doc.text('Belum ada aktivitas progres tercatat untuk proyek ini.', 40, y);
+    }
+
+    buckets.forEach((bucket) => {
+      if (y > 640) { doc.addPage(); y = 40; }
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...PDF_NAVY);
+      doc.text(`${judulBucket}${bucket.index} (${bucket.startStr} s/d ${bucket.endStr})`, 40, y);
+      y += 16;
+
+      const entriBucket = allEntries
+        .filter((e) => e.projectId === projectId && e.date >= bucket.startStr && e.date <= bucket.endStr)
+        .sort((a, b) => (a.date < b.date ? -1 : 1));
+
+      if (entriBucket.length === 0) {
+        doc.setFont('helvetica', 'italic'); doc.setFontSize(8.5); doc.setTextColor(...PDF_SLATE);
+        doc.text('Tidak ada aktivitas pada periode ini.', 40, y);
+        y += 16;
+      } else {
+        const rows = entriBucket.map((e) => {
+          const bh = bobotHarianEntry(e, allEntries, rabItems, rabTotalNilai);
+          const rabItem = rabItems.find((it) => it.uraian === e.uraian);
+          const hargaSatuan = Number(rabItem?.hargaSatuan) || 0;
+          const nilaiHariItu = bh ? bh.deltaVolume * hargaSatuan : 0;
+          const nilaiKumulatifItem = bh ? (Number(e.volumeSelesai) || 0) * hargaSatuan : 0;
+          return [
+            e.date, e.uraian || '-', e.satuan ? `${e.volumeSelesai}/${e.volumeTotal} ${e.satuan}` : '-',
+            bh ? `+${bh.deltaVolume} ${e.satuan} (${formatRupiah(nilaiHariItu)})` : '-',
+            bh ? `+${bh.bobotHarian.toFixed(2)}% (${formatRupiah(rabTotalNilai * bh.bobotHarian / 100)})` : '-',
+            bh ? `${bh.persenPekerjaanIni.toFixed(1)}%${bh.selesai ? ' ✓' : ''} (${formatRupiah(nilaiKumulatifItem)})` : '-',
+          ];
+        });
+        doc.autoTable({
+          startY: y, margin: { left: 40, right: 40 },
+          head: [['Tanggal', 'Uraian', 'Volume', 'Vol. + Nilai Hari Itu', 'Bobot + Nilai thd Proyek', 'Kumulatif thd Pekerjaan + Nilai']],
+          body: rows,
+          styles: { fontSize: 6, textColor: PDF_INK },
+          headStyles: { fillColor: PDF_NAVY, textColor: [242, 236, 217] },
+          alternateRowStyles: { fillColor: [250, 248, 241] },
+        });
+        y = doc.lastAutoTable.finalY + 10;
+      }
+
+      // Rekap Bobot Pekerjaan kumulatif s.d. akhir bucket ini (bucket 1 + 2 + ... + bucket ini)
+      if (y > 600) { doc.addPage(); y = 40; }
+      const rekap = gambarRekapBobot(doc, y, rabItems, allEntries, rabTotalNilai, projectId, bucket.endStr);
+      y = rekap.y + 14;
+    });
+
+    pdfFinishAllPages(doc);
+    doc.save(`${periode}-${(project?.name || 'proyek').replace(/\s+/g, '-').toLowerCase()}.pdf`);
+  } catch (err) {
+    console.error('Gagal ekspor laporan periode:', err);
+    alert('Gagal membuat file PDF. Coba lagi.');
+  }
+}
+
+function exportProgresFotoPDF(project, entries) {
+  try {
+    const doc = new window.jspdf.jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+    let y = pdfAddHeader(doc, 'Progres Proyek', project?.name || '-');
+
+    entries.forEach((entry) => {
+      if (y > 600) { doc.addPage(); y = 40; }
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...PDF_NAVY);
+      doc.text(entry.date, 40, y);
+      if (entry.uraian) doc.text(entry.uraian, 215, y, { maxWidth: 320 });
+      y += 14;
+      if (entry.satuan && (entry.volumeTotal > 0 || entry.volumeSelesai > 0)) {
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...PDF_GOLD);
+        doc.text(`Volume: ${entry.volumeSelesai}/${entry.volumeTotal} ${entry.satuan}  |  Sisa: ${entry.volumeSisa} ${entry.satuan}`, 215, y, { maxWidth: 320 });
+        y += 14;
+      }
+      if (entry.photo) {
+        try {
+          doc.addImage(entry.photo, 'JPEG', 40, y - 14, 160, 120);
+        } catch { /* lewati kalau format foto tidak didukung addImage */ }
+      }
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...PDF_INK);
+      doc.text(entry.note || '(tanpa catatan)', 215, y + 6, { maxWidth: 320 });
+      y += 130;
+    });
+
+    pdfFinishAllPages(doc);
+    doc.save(`progres-${(project?.name || 'proyek').replace(/\s+/g, '-').toLowerCase()}.pdf`);
+  } catch (err) {
+    console.error('Gagal ekspor PDF Progres Proyek:', err);
+    alert('Gagal membuat file PDF. Coba lagi.');
+  }
+}
+
+/* ---------------- Data Klien (CRM ringan) ---------------- */
+const KLIEN_JENIS = { perorangan: 'Perorangan', perusahaan: 'Perusahaan/Instansi' };
+const KLIEN_STATUS = {
+  prospek: 'Prospek', follow_up: 'Follow-up', deal: 'Deal', tidak_jadi: 'Tidak Jadi',
+};
+const KLIEN_STATUS_COLORS = { prospek: '#5B6478', follow_up: '#C9A227', deal: '#2F7A52', tidak_jadi: '#B23A2E' };
+const KLIEN_SUMBER = ['Website', 'Rekomendasi', 'Medsos', 'Datang Langsung', 'Lainnya'];
+
+function emptyKlienForm() {
+  return {
+    nama: '', jenis: 'perusahaan', namaPIC: '', jabatanPIC: '', telepon: '', email: '',
+    alamat: '', sumber: KLIEN_SUMBER[0], status: 'prospek', proyekTerkait: '', catatan: '',
+  };
+}
+
+function KlienForm({ onSave, onCancel, initial }) {
+  const [form, setForm] = useState(initial ? { ...emptyKlienForm(), ...initial } : emptyKlienForm());
+  const set = (patch) => setForm((f) => ({ ...f, ...patch }));
+
+  const handleSave = async () => {
+    if (!form.nama.trim()) {
+      alert('Isi nama klien/perusahaan dulu.');
+      return;
+    }
+    await onSave({ id: initial?.id || uid(), ...form, nama: form.nama.trim() });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4" style={{ background: 'rgba(13,25,48,0.7)' }}>
+      <div className="w-full max-w-md rounded-xl p-4 att-body max-h-[92vh] overflow-y-auto" style={{ background: THEME.paper }}>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-bold text-sm" style={{ color: THEME.ink }}>{initial ? 'Edit' : 'Tambah'} Data Klien</h3>
+          <button type="button" onClick={onCancel}><X size={18} color={THEME.inkSoft} /></button>
+        </div>
+
+        <input value={form.nama} onChange={(e) => set({ nama: e.target.value })} placeholder="Nama Klien / Perusahaan"
+          className="w-full px-3 py-2 rounded att-body text-sm outline-none mb-2" style={{ background: THEME.concrete, color: THEME.ink }} />
+
+        <div className="grid grid-cols-2 gap-2 mb-2">
+          <select value={form.jenis} onChange={(e) => set({ jenis: e.target.value })}
+            className="px-3 py-2 rounded att-mono text-xs outline-none" style={{ background: THEME.concrete, color: THEME.ink }}>
+            {Object.entries(KLIEN_JENIS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+          <select value={form.status} onChange={(e) => set({ status: e.target.value })}
+            className="px-3 py-2 rounded att-mono text-xs outline-none" style={{ background: THEME.concrete, color: THEME.ink }}>
+            {Object.entries(KLIEN_STATUS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+        </div>
+
+        <p className="att-mono text-[10px] mb-1.5" style={{ color: THEME.inkSoft }}>NARAHUBUNG (PIC)</p>
+        <div className="grid grid-cols-2 gap-2 mb-2">
+          <input value={form.namaPIC} onChange={(e) => set({ namaPIC: e.target.value })} placeholder="Nama PIC"
+            className="px-3 py-2 rounded att-body text-sm outline-none" style={{ background: THEME.concrete, color: THEME.ink }} />
+          <input value={form.jabatanPIC} onChange={(e) => set({ jabatanPIC: e.target.value })} placeholder="Jabatan PIC"
+            className="px-3 py-2 rounded att-body text-sm outline-none" style={{ background: THEME.concrete, color: THEME.ink }} />
+        </div>
+        <div className="grid grid-cols-2 gap-2 mb-2">
+          <input value={form.telepon} onChange={(e) => set({ telepon: e.target.value })} placeholder="No. HP/Telepon"
+            className="px-3 py-2 rounded att-body text-sm outline-none" style={{ background: THEME.concrete, color: THEME.ink }} />
+          <input value={form.email} onChange={(e) => set({ email: e.target.value })} placeholder="Email"
+            className="px-3 py-2 rounded att-body text-sm outline-none" style={{ background: THEME.concrete, color: THEME.ink }} />
+        </div>
+        <input value={form.alamat} onChange={(e) => set({ alamat: e.target.value })} placeholder="Alamat"
+          className="w-full px-3 py-2 rounded att-body text-sm outline-none mb-2" style={{ background: THEME.concrete, color: THEME.ink }} />
+
+        <div className="grid grid-cols-2 gap-2 mb-2">
+          <select value={form.sumber} onChange={(e) => set({ sumber: e.target.value })}
+            className="px-3 py-2 rounded att-mono text-xs outline-none" style={{ background: THEME.concrete, color: THEME.ink }}>
+            {KLIEN_SUMBER.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <input value={form.proyekTerkait} onChange={(e) => set({ proyekTerkait: e.target.value })} placeholder="Proyek terkait (opsional)"
+            className="px-3 py-2 rounded att-body text-sm outline-none" style={{ background: THEME.concrete, color: THEME.ink }} />
+        </div>
+
+        <p className="att-mono text-[10px] mb-1.5" style={{ color: THEME.inkSoft }}>CATATAN / RIWAYAT KOMUNIKASI</p>
+        <textarea value={form.catatan} onChange={(e) => set({ catatan: e.target.value })} rows={4}
+          placeholder="Mis. 12/07 - Telepon awal, tertarik renovasi kantor. 20/07 - Kirim penawaran, tunggu konfirmasi."
+          className="w-full px-3 py-2 rounded att-body text-xs outline-none mb-3" style={{ background: THEME.concrete, color: THEME.ink }} />
+
+        <button type="button" onClick={handleSave}
+          className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded font-semibold text-sm"
+          style={{ background: THEME.amber, color: THEME.charcoal }}>
+          <Check size={15} /> Simpan Data Klien
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function DataKlienTab({ klienList, onAdd, onUpdate, onDelete }) {
+  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [search, setSearch] = useState('');
+  const [filterStatus, setFilterStatus] = useState('all');
+
+  const handleSave = async (data) => {
+    if (editing) await onUpdate(editing.id, data);
+    else await onAdd(data);
+    setShowForm(false);
+    setEditing(null);
+  };
+
+  const filtered = klienList
+    .filter((k) => filterStatus === 'all' || k.status === filterStatus)
+    .filter((k) => !search.trim() || k.nama.toLowerCase().includes(search.toLowerCase()) || (k.namaPIC || '').toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => (a.nama || '').localeCompare(b.nama || ''));
+
+  return (
+    <div className="p-4 pb-24">
+      <div className="flex items-center justify-between mb-3">
+        <p className="att-mono text-xs" style={{ color: THEME.inkSoft }}>DATA KLIEN ({klienList.length})</p>
+        <button type="button" onClick={() => { setEditing(null); setShowForm(true); }}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded att-mono text-xs font-semibold" style={{ background: THEME.amber, color: THEME.charcoal }}>
+          <Plus size={13} /> Tambah Klien
+        </button>
+      </div>
+
+      <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari nama klien atau PIC..."
+        className="w-full px-3 py-2 rounded att-body text-sm outline-none mb-2" style={{ background: THEME.paper, color: THEME.ink, border: `1px solid ${THEME.line}` }} />
+
+      <div className="flex gap-1.5 mb-3 overflow-x-auto att-scroll">
+        {['all', ...Object.keys(KLIEN_STATUS)].map((s) => (
+          <button key={s} type="button" onClick={() => setFilterStatus(s)}
+            className="px-3 py-1.5 rounded-full att-mono text-[10.5px] font-semibold shrink-0"
+            style={{ background: filterStatus === s ? THEME.charcoal : THEME.concrete, color: filterStatus === s ? THEME.paper : THEME.inkSoft }}>
+            {s === 'all' ? 'Semua' : KLIEN_STATUS[s]}
+          </button>
+        ))}
+      </div>
+
+      <div className="space-y-2">
+        {filtered.map((k) => (
+          <div key={k.id} className="p-3 rounded-lg" style={{ background: THEME.paper, border: `1px solid ${THEME.line}` }}>
+            <div className="flex items-start justify-between mb-1">
+              <div className="min-w-0">
+                <p className="att-body font-semibold text-sm truncate" style={{ color: THEME.ink }}>{k.nama}</p>
+                <p className="att-mono text-[11px]" style={{ color: THEME.inkSoft }}>{KLIEN_JENIS[k.jenis]}{k.namaPIC ? ` · PIC: ${k.namaPIC}` : ''}</p>
+              </div>
+              <span className="att-mono text-[9px] px-1.5 py-0.5 rounded-full font-semibold shrink-0" style={{ background: KLIEN_STATUS_COLORS[k.status], color: '#fff' }}>
+                {KLIEN_STATUS[k.status]}
+              </span>
+            </div>
+            {(k.telepon || k.email) && (
+              <p className="att-mono text-[11px] mt-1" style={{ color: THEME.inkSoft }}>{[k.telepon, k.email].filter(Boolean).join(' · ')}</p>
+            )}
+            {k.proyekTerkait && (
+              <p className="att-mono text-[11px] mt-0.5" style={{ color: THEME.amber }}>Proyek: {k.proyekTerkait}</p>
+            )}
+            <div className="flex items-center gap-1.5 mt-2">
+              <button type="button" onClick={() => { setEditing(k); setShowForm(true); }}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded att-mono text-[11px] font-semibold" style={{ border: `1px solid ${THEME.line}`, color: THEME.ink, background: THEME.concrete }}>
+                <Edit3 size={12} /> Edit
+              </button>
+              {confirmDelete === k.id ? (
+                <button type="button" onClick={() => { onDelete(k.id); setConfirmDelete(null); }} className="p-1.5 rounded ml-auto" style={{ background: THEME.rust }}>
+                  <Check size={13} color={THEME.paper} />
+                </button>
+              ) : (
+                <button type="button" onClick={() => setConfirmDelete(k.id)} className="p-1.5 rounded ml-auto" style={{ background: THEME.concrete }}>
+                  <Trash2 size={13} color={THEME.rust} />
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+        {filtered.length === 0 && (
+          <p className="att-body text-sm text-center py-6" style={{ color: THEME.inkSoft }}>Belum ada data klien. Tap "Tambah Klien" untuk mulai.</p>
+        )}
+      </div>
+
+      {showForm && (
+        <KlienForm initial={editing} onSave={handleSave} onCancel={() => { setShowForm(false); setEditing(null); }} />
+      )}
+    </div>
+  );
+}
+
+/* ---------------- Kalkulator Dimensi (RAB & Progres) ---------------- */
+const DIMENSI_FORMULA = {
+  manual: { label: 'Manual (langsung isi angka)', fields: [] },
+  kotak: { label: 'Volume Kotak/Balok — P×L×T×N', fields: ['p', 'l', 't', 'n'] },
+  luas: { label: 'Luas — P×L×N', fields: ['p', 'l', 'n'] },
+  trapesium: { label: 'Trapesium (mis. Pondasi Batu Kali) — ((La+Lb)/2×T)×P×N', fields: ['p', 'la', 'lb', 't', 'n'] },
+  batang: { label: 'Berat Batang (mis. Kolom IWF/Besi) — P×N×Berat/m', fields: ['p', 'n', 'beratPerM'] },
+};
+const DIMENSI_FIELD_LABEL = {
+  p: 'Panjang (P)', l: 'Lebar (L)', t: 'Tinggi (T)', n: 'Jumlah (N)',
+  la: 'Lebar Atas (La)', lb: 'Lebar Bawah (Lb)', beratPerM: 'Berat per Meter (kg/m)',
+};
+function hitungDimensi(formulaType, d) {
+  const p = Number(d.p) || 0, l = Number(d.l) || 0, t = Number(d.t) || 0, n = Number(d.n) || 1;
+  const la = Number(d.la) || 0, lb = Number(d.lb) || 0, beratPerM = Number(d.beratPerM) || 0;
+  switch (formulaType) {
+    case 'kotak': return p * l * t * n;
+    case 'luas': return p * l * n;
+    case 'trapesium': return ((la + lb) / 2) * t * p * n;
+    case 'batang': return p * n * beratPerM;
+    default: return null;
+  }
+}
+
+function DimensiCalculator({ onApply }) {
+  const [open, setOpen] = useState(false);
+  const [formulaType, setFormulaType] = useState('manual');
+  const [d, setD] = useState({});
+  const hasil = hitungDimensi(formulaType, d);
+
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)}
+        className="att-mono text-[10px] font-semibold mb-2" style={{ color: THEME.amber }}>
+        📐 Pakai Kalkulator Dimensi
+      </button>
+    );
+  }
+  return (
+    <div className="p-2.5 rounded-lg mb-2" style={{ background: THEME.concrete }}>
+      <div className="flex items-center justify-between mb-1.5">
+        <p className="att-mono text-[10px]" style={{ color: THEME.inkSoft }}>KALKULATOR DIMENSI</p>
+        <button type="button" onClick={() => setOpen(false)}><X size={13} color={THEME.inkSoft} /></button>
+      </div>
+      <select value={formulaType} onChange={(e) => { setFormulaType(e.target.value); setD({}); }}
+        className="w-full px-2 py-1.5 rounded att-mono text-[10.5px] outline-none mb-1.5" style={{ background: THEME.paper, color: THEME.ink }}>
+        {Object.entries(DIMENSI_FORMULA).map(([v, f]) => <option key={v} value={v}>{f.label}</option>)}
+      </select>
+      {formulaType !== 'manual' && (
+        <>
+          <div className="grid grid-cols-2 gap-1.5 mb-1.5">
+            {DIMENSI_FORMULA[formulaType].fields.map((f) => (
+              <input key={f} value={d[f] || ''} onChange={(e) => setD({ ...d, [f]: e.target.value.replace(/[^0-9.]/g, '') })}
+                placeholder={DIMENSI_FIELD_LABEL[f]} inputMode="decimal"
+                className="px-2 py-1.5 rounded att-mono text-[10.5px] outline-none" style={{ background: THEME.paper, color: THEME.ink }} />
+            ))}
+          </div>
+          <p className="att-mono text-[10.5px] mb-1.5" style={{ color: THEME.amber }}>Hasil: {hasil !== null ? hasil.toLocaleString('id-ID', { maximumFractionDigits: 3 }) : '-'}</p>
+          <button type="button" onClick={() => { if (hasil !== null) { onApply(hasil); setOpen(false); } }}
+            className="w-full py-1.5 rounded att-mono text-[10.5px] font-semibold" style={{ background: THEME.amber, color: THEME.charcoal }}>
+            Terapkan ke Volume
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ---------------- Cuaca ---------------- */
+const CUACA_LIST = {
+  cerah: { label: 'Cerah', color: '#2F7A52', kerja: 'auto_on' },
+  mendung: { label: 'Mendung', color: '#C9A227', kerja: 'pilihan' },
+  gerimis: { label: 'Hujan Gerimis', color: '#E091A8', kerja: 'pilihan' },
+  deras: { label: 'Hujan Deras', color: '#8A1F1F', kerja: 'auto_stop' },
+};
+
+function rabItemStatus(rabItem, allEntries, projectId) {
+  const matching = allEntries.filter((e) => e.projectId === projectId && e.uraian === rabItem.uraian);
+  const latest = [...matching].sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+  const volumeSelesai = latest ? Number(latest.volumeSelesai) || 0 : 0;
+  const volumeTotal = Number(rabItem.volume) || 0;
+  let status = 'off';
+  if (volumeTotal > 0 && volumeSelesai >= volumeTotal) status = 'sukses';
+  else if (volumeSelesai > 0) status = 'proses';
+  return { volumeSelesai, volumeTotal, status, latestDate: latest?.date };
+}
+const RAB_STATUS_LABEL = { off: 'OFF', proses: 'ON PROSES', sukses: 'SELESAI' };
+const RAB_STATUS_COLOR = { off: '#B23A2E', proses: '#C9A227', sukses: '#2F7A52' };
+
+function bobotHarianEntry(entry, allEntries, rabItems, rabTotalNilai) {
+  if (!entry.uraian || !entry.satuan) return null;
+  const rabItem = rabItems.find((it) => it.uraian === entry.uraian);
+  if (!rabItem) return null;
+  const volumeTotalRab = Number(rabItem.volume) || 0;
+  if (volumeTotalRab <= 0 || rabTotalNilai <= 0) return null;
+
+  const nilaiItem = volumeTotalRab * (Number(rabItem.hargaSatuan) || 0);
+  const bobotItem = (nilaiItem / rabTotalNilai) * 100;
+
+  // Entri lain untuk pekerjaan yang sama, di proyek yang sama, sebelum tanggal entri ini
+  const riwayatSama = allEntries
+    .filter((e) => e.projectId === entry.projectId && e.uraian === entry.uraian && e.date <= entry.date && e.id !== entry.id)
+    .sort((a, b) => (a.date < b.date ? 1 : -1));
+  const sebelumnya = riwayatSama.find((e) => e.date < entry.date);
+  const volSebelum = sebelumnya ? Number(sebelumnya.volumeSelesai) || 0 : 0;
+  const volSekarang = Number(entry.volumeSelesai) || 0;
+  const deltaVolume = Math.max(0, volSekarang - volSebelum);
+  const bobotHarian = bobotItem * (deltaVolume / volumeTotalRab);
+  const persenPekerjaanIni = Math.min(100, (volSekarang / volumeTotalRab) * 100);
+  const selesai = volSekarang >= volumeTotalRab;
+  return { bobotItem, deltaVolume, bobotHarian, persenPekerjaanIni, selesai };
+}
+
+function ProgresFotoTab({ projects, entries, onAdd, onDelete, penawaranList }) {
+  const [projectId, setProjectId] = useState(projects[0]?.id || '');
+  const [activeItem, setActiveItem] = useState(null); // rabItem yang lagi diisi progresnya (atau { free: true } utk catatan bebas)
+  const [uraian, setUraian] = useState('');
+  const [volumeTotal, setVolumeTotal] = useState('');
+  const [volumeSelesai, setVolumeSelesai] = useState('');
+  const [satuan, setSatuan] = useState('');
+  const [note, setNote] = useState('');
+  const [cuaca, setCuaca] = useState('cerah');
+  const [statusKerja, setStatusKerja] = useState('lanjut'); // 'lanjut' | 'stop', dipakai saat cuaca mendung/gerimis
+  const [photoDataUri, setPhotoDataUri] = useState('');
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(null);
+
+  const rabItems = (penawaranList || [])
+    .filter((p) => p.projectId === projectId)
+    .flatMap((p) => p.items || []);
+  const rabTotalNilai = rabItems.reduce((s, it) => s + (Number(it.volume) || 0) * (Number(it.hargaSatuan) || 0), 0);
+
+  const openForRab = (item, currentSelesai) => {
+    setActiveItem(item);
+    setUraian(item.uraian);
+    setVolumeTotal(String(item.volume || ''));
+    setSatuan(item.satuan || '');
+    setVolumeSelesai(currentSelesai > 0 ? String(currentSelesai) : '');
+    setNote(''); setCuaca('cerah'); setStatusKerja('lanjut');
+    setPhotoDataUri('');
+  };
+  const openFree = () => {
+    setActiveItem({ free: true });
+    setUraian(''); setVolumeTotal(''); setSatuan(''); setVolumeSelesai(''); setNote('');
+    setCuaca('cerah'); setStatusKerja('lanjut'); setPhotoDataUri('');
+  };
+  const closeForm = () => setActiveItem(null);
+
+  const handlePhotoFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPhotoBusy(true);
+    try {
+      const dataUri = await resizeImage(file);
+      setPhotoDataUri(dataUri);
+    } catch {
+      alert('Gagal memuat foto. Coba lagi.');
+    }
+    setPhotoBusy(false);
+    e.target.value = '';
+  };
+
+  const handleSave = async () => {
+    if (!projectId || !photoDataUri) {
+      alert('Ambil/pilih foto dulu.');
+      return;
+    }
+    if (CUACA_LIST[cuaca].kerja === 'auto_stop') {
+      alert('Cuaca Hujan Deras — pekerjaan otomatis dihentikan (Stop). Progres hari ini tidak bisa disimpan sebagai lanjutan kerja.');
+      return;
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    const vTotal = Number(volumeTotal) || 0;
+    const vSelesai = Number(volumeSelesai) || 0;
+    const efektifStatusKerja = CUACA_LIST[cuaca].kerja === 'auto_on' ? 'lanjut' : statusKerja;
+    await onAdd({
+      id: uid(), projectId, date: today, note: note.trim(), photo: photoDataUri,
+      uraian: uraian.trim(), satuan: satuan.trim(), cuaca, statusKerja: efektifStatusKerja,
+      volumeTotal: vTotal, volumeSelesai: vSelesai, volumeSisa: Math.max(0, vTotal - vSelesai),
+    });
+    closeForm();
+  };
+
+  const projectEntries = entries
+    .filter((e) => e.projectId === projectId)
+    .sort((a, b) => (a.date < b.date ? 1 : -1));
+  const activeProject = projects.find((p) => p.id === projectId);
+
+  return (
+    <div className="p-4 pb-24">
+      <p className="att-mono text-xs mb-3" style={{ color: THEME.inkSoft }}>PROGRES FOTO PROYEK</p>
+
+      <select value={projectId} onChange={(e) => { setProjectId(e.target.value); setActiveItem(null); }}
+        className="w-full px-3 py-2.5 rounded att-body text-sm outline-none mb-3" style={{ background: THEME.paper, color: THEME.ink, border: `1px solid ${THEME.line}` }}>
+        <option value="">— Pilih Proyek —</option>
+        {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+      </select>
+
+      {projects.length === 0 && (
+        <p className="att-body text-sm text-center py-4" style={{ color: THEME.inkSoft }}>Belum ada proyek. Buat lewat tab Absensi Mingguan.</p>
+      )}
+
+      {projectId && (
+        <>
+          <div className="flex items-center justify-between mb-2">
+            <p className="att-mono text-xs" style={{ color: THEME.inkSoft }}>PEKERJAAN DARI RAB ({rabItems.length})</p>
+            <button type="button" onClick={openFree}
+              className="att-mono text-[10.5px] font-semibold" style={{ color: THEME.amber }}>+ Catatan Bebas</button>
+          </div>
+          <div className="space-y-2 mb-5">
+            {rabItems.map((item, idx) => {
+              const st = rabItemStatus(item, entries, projectId);
+              const nilaiItem = (Number(item.volume) || 0) * (Number(item.hargaSatuan) || 0);
+              const bobot = rabTotalNilai > 0 ? (nilaiItem / rabTotalNilai) * 100 : 0;
+              const rasioSelesai = st.volumeTotal > 0 ? Math.min(1, st.volumeSelesai / st.volumeTotal) : 0;
+              const bobotTercapai = bobot * rasioSelesai;
+              return (
+                <button key={item.id || idx} type="button" onClick={() => openForRab(item, st.volumeSelesai)}
+                  className="w-full text-left p-3 rounded-lg" style={{ background: THEME.paper, border: `1px solid ${THEME.line}` }}>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="att-body font-semibold text-sm flex-1" style={{ color: THEME.ink }}>{item.uraian}</p>
+                    <span className="att-mono text-[9px] px-2 py-0.5 rounded-full font-bold shrink-0" style={{ background: RAB_STATUS_COLOR[st.status], color: '#fff' }}>
+                      {RAB_STATUS_LABEL[st.status]}
+                    </span>
+                  </div>
+                  <p className="att-mono text-[10.5px] mt-1" style={{ color: THEME.inkSoft }}>
+                    {st.volumeSelesai}/{st.volumeTotal} {item.satuan} {st.latestDate ? `· terakhir ${st.latestDate}` : '· belum ada foto'}
+                  </p>
+                  <p className="att-mono text-[10px] mt-1" style={{ color: THEME.amber }}>
+                    Bobot pekerjaan: {bobot.toFixed(1)}% dari proyek &middot; Tercapai: {bobotTercapai.toFixed(1)}%
+                  </p>
+                </button>
+              );
+            })}
+            {rabItems.length === 0 && (
+              <p className="att-body text-sm text-center py-4" style={{ color: THEME.inkSoft }}>
+                Belum ada RAB yang terhubung ke proyek ini. Buat/hubungkan dulu lewat tab "Penawaran", atau tap "+ Catatan Bebas" di atas.
+              </p>
+            )}
+          </div>
+        </>
+      )}
+
+      {activeItem && (
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-4" style={{ background: 'rgba(13,25,48,0.75)' }}>
+          <div className="w-full max-w-md rounded-xl p-4 att-body max-h-[92vh] overflow-y-auto" style={{ background: THEME.paper }}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-bold text-sm" style={{ color: THEME.ink }}>Tambah Foto Progres Hari Ini</h3>
+              <button type="button" onClick={closeForm}><X size={18} color={THEME.inkSoft} /></button>
+            </div>
+
+            {photoDataUri ? (
+              <div className="mb-2">
+                <img src={photoDataUri} alt="Progres" className="w-full rounded-lg mb-1.5" style={{ maxHeight: 180, objectFit: 'cover' }} />
+                <button type="button" onClick={() => setPhotoDataUri('')} className="att-mono text-[10px]" style={{ color: THEME.rust }}>Hapus foto, ambil ulang</button>
+              </div>
+            ) : (
+              <div className="flex gap-2 mb-3">
+                <label className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded text-sm font-semibold cursor-pointer"
+                  style={{ background: THEME.concrete, color: THEME.ink }}>
+                  <Camera size={16} /> {photoBusy ? '...' : 'Kamera'}
+                  <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoFile} disabled={photoBusy} />
+                </label>
+                <label className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded text-sm font-semibold cursor-pointer"
+                  style={{ background: THEME.concrete, color: THEME.ink }}>
+                  <Save size={16} /> {photoBusy ? '...' : 'File'}
+                  <input type="file" accept="image/*" className="hidden" onChange={handlePhotoFile} disabled={photoBusy} />
+                </label>
+              </div>
+            )}
+
+            {activeItem.free ? (
+              <input value={uraian} onChange={(e) => setUraian(e.target.value)} placeholder="Uraian pekerjaan (mis. Pengecoran Kolom Lantai 1)"
+                className="w-full px-3 py-2 rounded att-body text-sm outline-none mb-2" style={{ background: THEME.concrete, color: THEME.ink }} />
+            ) : (
+              <div className="p-2.5 rounded-lg mb-2" style={{ background: THEME.concrete }}>
+                <p className="att-mono text-[9.5px]" style={{ color: THEME.inkSoft }}>UraIAN PEKERJAAN (dari RAB, terkunci)</p>
+                <p className="att-body text-sm font-semibold" style={{ color: THEME.ink }}>{uraian}</p>
+              </div>
+            )}
+
+            <DimensiCalculator onApply={(hasil) => setVolumeSelesai(String(hasil))} />
+            <div className="grid grid-cols-3 gap-2 mb-2">
+              <input value={volumeTotal} onChange={(e) => activeItem.free && setVolumeTotal(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="Volume total"
+                readOnly={!activeItem.free} inputMode="decimal"
+                className="px-2 py-2 rounded att-body text-sm outline-none" style={{ background: activeItem.free ? THEME.concrete : THEME.line, color: THEME.ink }} />
+              <input value={volumeSelesai} onChange={(e) => setVolumeSelesai(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="Vol. selesai" inputMode="decimal"
+                className="px-2 py-2 rounded att-body text-sm outline-none" style={{ background: THEME.concrete, color: THEME.ink }} />
+              <input value={satuan} onChange={(e) => activeItem.free && setSatuan(e.target.value)} placeholder="Satuan" readOnly={!activeItem.free}
+                className="px-2 py-2 rounded att-body text-sm outline-none" style={{ background: activeItem.free ? THEME.concrete : THEME.line, color: THEME.ink }} />
+            </div>
+            {volumeTotal && volumeSelesai && (
+              <p className="att-mono text-[10.5px] mb-2" style={{ color: Number(volumeSelesai) >= Number(volumeTotal) ? THEME.green : THEME.inkSoft }}>
+                {Number(volumeSelesai) >= Number(volumeTotal) ? '✓ Volume tercapai — pekerjaan SELESAI' : `Sisa volume: ${Math.max(0, (Number(volumeTotal) || 0) - (Number(volumeSelesai) || 0))} ${satuan || ''}`}
+              </p>
+            )}
+
+            <p className="att-mono text-[10px] mb-1.5" style={{ color: THEME.inkSoft }}>CUACA HARI INI</p>
+            <div className="grid grid-cols-4 gap-1.5 mb-2">
+              {Object.entries(CUACA_LIST).map(([key, c]) => (
+                <button key={key} type="button" onClick={() => { setCuaca(key); if (c.kerja !== 'pilihan') setStatusKerja('lanjut'); }}
+                  className="py-2 rounded att-mono text-[9px] font-bold text-center"
+                  style={{ background: cuaca === key ? c.color : THEME.concrete, color: cuaca === key ? '#fff' : THEME.inkSoft }}>
+                  {c.label}
+                </button>
+              ))}
+            </div>
+            {CUACA_LIST[cuaca].kerja === 'auto_on' && (
+              <p className="att-mono text-[10px] mb-2" style={{ color: THEME.green }}>● Status: ON — kerja berjalan normal</p>
+            )}
+            {CUACA_LIST[cuaca].kerja === 'pilihan' && (
+              <div className="flex gap-1.5 mb-2">
+                <button type="button" onClick={() => setStatusKerja('lanjut')}
+                  className="flex-1 py-2 rounded att-mono text-[10.5px] font-semibold" style={{ background: statusKerja === 'lanjut' ? THEME.green : THEME.concrete, color: statusKerja === 'lanjut' ? '#fff' : THEME.inkSoft }}>
+                  Lanjut Kerja
+                </button>
+                <button type="button" onClick={() => setStatusKerja('stop')}
+                  className="flex-1 py-2 rounded att-mono text-[10.5px] font-semibold" style={{ background: statusKerja === 'stop' ? THEME.rust : THEME.concrete, color: statusKerja === 'stop' ? '#fff' : THEME.inkSoft }}>
+                  Stop Kerja
+                </button>
+              </div>
+            )}
+            {CUACA_LIST[cuaca].kerja === 'auto_stop' && (
+              <p className="att-mono text-[10px] mb-2" style={{ color: THEME.rust }}>● Status: STOP OTOMATIS — hujan deras, pekerjaan dihentikan</p>
+            )}
+
+            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Catatan tambahan (opsional)"
+              className="w-full px-3 py-2 rounded att-body text-sm outline-none mb-3" style={{ background: THEME.concrete, color: THEME.ink }} />
+            <button type="button" onClick={handleSave} disabled={CUACA_LIST[cuaca].kerja === 'auto_stop'}
+              className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded font-semibold text-sm disabled:opacity-40"
+              style={{ background: THEME.amber, color: THEME.charcoal }}>
+              <Check size={15} /> Simpan Progres Hari Ini
+            </button>
+          </div>
+        </div>
+      )}
+
+      {projectId && projectEntries.length > 0 && (
+        <>
+          <p className="att-mono text-xs mb-2" style={{ color: THEME.inkSoft }}>LAPORAN</p>
+          <div className="space-y-1.5 mb-4">
+            {[
+              { key: 'harian', label: 'Harian' },
+              { key: 'mingguan', label: 'Mingguan' },
+              { key: 'bulanan', label: 'Bulanan' },
+            ].map((p) => (
+              <div key={p.key} className="flex items-center gap-1.5">
+                <span className="att-body text-xs font-semibold w-16 shrink-0" style={{ color: THEME.ink }}>{p.label}</span>
+                <button type="button" onClick={() => exportLaporanPeriodePDF(activeProject, projectEntries, rabItems, rabTotalNilai, p.key)}
+                  className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded att-mono text-[10px] font-semibold" style={{ border: `1px solid ${THEME.line}`, color: THEME.ink, background: THEME.paper }}>
+                  <Save size={11} /> PDF
+                </button>
+                <button type="button" onClick={() => exportLaporanPeriodeExcel(activeProject, projectEntries, rabItems, rabTotalNilai, p.key)}
+                  className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded att-mono text-[10px] font-semibold" style={{ border: `1px solid ${THEME.line}`, color: THEME.ink, background: THEME.paper }}>
+                  <Save size={11} /> Excel
+                </button>
+                <button type="button" onClick={() => openPrintDocument(`Laporan ${p.label} - ${activeProject?.name || ''}`, laporanPeriodeHtml(activeProject, projectEntries, rabItems, rabTotalNilai, p.key), false)}
+                  className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded att-mono text-[10px] font-semibold" style={{ border: `1px solid ${THEME.line}`, color: THEME.ink, background: THEME.paper }}>
+                  <Printer size={11} /> Cetak
+                </button>
+              </div>
+            ))}
+          </div>
+          <p className="att-mono text-xs mb-2" style={{ color: THEME.inkSoft }}>RIWAYAT ({projectEntries.length})</p>
+          <div className="space-y-2">
+            {projectEntries.map((entry) => (
+              <div key={entry.id} className="p-3 rounded-lg" style={{ background: THEME.paper, border: `1px solid ${THEME.line}` }}>
+                <div className="flex gap-2.5">
+                  {entry.photo && (
+                    <img src={entry.photo} alt={entry.date} className="w-20 h-20 rounded-lg object-cover shrink-0" style={{ border: `1px solid ${THEME.line}` }} />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <p className="att-mono text-xs font-semibold" style={{ color: THEME.ink }}>{entry.date}</p>
+                      {entry.cuaca && CUACA_LIST[entry.cuaca] && (
+                        <span className="att-mono text-[8px] px-1.5 py-0.5 rounded font-bold" style={{ background: CUACA_LIST[entry.cuaca].color, color: '#fff' }}>
+                          {CUACA_LIST[entry.cuaca].label}{entry.statusKerja === 'stop' ? ' · STOP' : ''}
+                        </span>
+                      )}
+                    </div>
+                    {entry.uraian && <p className="att-body text-sm font-semibold mt-0.5" style={{ color: THEME.ink }}>{entry.uraian}</p>}
+                    {entry.satuan && (entry.volumeTotal > 0 || entry.volumeSelesai > 0) && (
+                      <p className="att-mono text-[10.5px] mt-0.5" style={{ color: entry.volumeSelesai >= entry.volumeTotal && entry.volumeTotal > 0 ? THEME.green : THEME.amber }}>
+                        {entry.volumeSelesai}/{entry.volumeTotal} {entry.satuan} &middot; sisa {entry.volumeSisa} {entry.satuan}
+                      </p>
+                    )}
+                    {(() => {
+                      const bh = bobotHarianEntry(entry, entries, rabItems, rabTotalNilai);
+                      if (!bh) return null;
+                      return (
+                        <div className="mt-1 space-y-1">
+                          <p className="att-mono text-[10px] inline-block mr-1" style={{ color: THEME.charcoal, background: THEME.amberSoft, padding: '1px 6px', borderRadius: 4 }}>
+                            +{bh.deltaVolume} {entry.satuan} hari ini &middot; bobot proyek: +{bh.bobotHarian.toFixed(2)}%
+                          </p>
+                          <p className="att-mono text-[10px]" style={{ color: bh.selesai ? THEME.green : THEME.inkSoft }}>
+                            Bobot terhadap pekerjaan ini sendiri: {bh.persenPekerjaanIni.toFixed(1)}%
+                            {bh.selesai && <span style={{ color: THEME.green, fontWeight: 700 }}> &middot; ✓ SELESAI</span>}
+                          </p>
+                        </div>
+                      );
+                    })()}
+                    <p className="att-body text-sm mt-0.5" style={{ color: THEME.inkSoft }}>{entry.note || '(tanpa catatan)'}</p>
+                  </div>
+                  {confirmDelete === entry.id ? (
+                    <button type="button" onClick={() => { onDelete(entry.id); setConfirmDelete(null); }} className="p-1.5 rounded shrink-0 h-fit" style={{ background: THEME.rust }}>
+                      <Check size={13} color={THEME.paper} />
+                    </button>
+                  ) : (
+                    <button type="button" onClick={() => setConfirmDelete(entry.id)} className="p-1.5 rounded shrink-0 h-fit" style={{ background: THEME.concrete }}>
+                      <Trash2 size={13} color={THEME.rust} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+      {projectId && projectEntries.length === 0 && (
+        <p className="att-body text-sm text-center py-6" style={{ color: THEME.inkSoft }}>Belum ada progres foto untuk proyek ini.</p>
+      )}
+    </div>
+  );
 }
 
 function RekapProyekTab({ projects, purchases, usage, materials, utangPayments, onAddUtangPayment, workers, weeks, payments, kasbon, kasbonPayments, onUpdateProject, peralatanUsage }) {
@@ -2917,7 +5573,7 @@ function RekapProyekTab({ projects, purchases, usage, materials, utangPayments, 
   }).filter((x) => x.totalQty > 0).sort((a, b) => b.totalQty - a.totalQty);
 
   const grandUtang = perGudang.reduce((s, x) => s + x.totalBelumLunas, 0);
-  const utangPekerja = buildUpahRows(workers, weeks, projects, payments, kasbon, kasbonPayments, 'all')
+  const utangPekerja = buildUpahRows(workers, weeks, projects, payments, kasbon, kasbonPayments, null, 'all')
     .filter((r) => r.sisa > 0)
     .sort((a, b) => b.sisa - a.sisa);
   const grandUtangPekerja = utangPekerja.reduce((s, r) => s + r.sisa, 0);
@@ -2997,6 +5653,25 @@ function RekapProyekTab({ projects, purchases, usage, materials, utangPayments, 
                     {overdue ? `Terlambat ${Math.abs(daysLeft)} hari dari target selesai` : `${daysLeft} hari lagi menuju target selesai`}
                   </p>
                 )}
+                <div className="mt-2 space-y-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <input type="text" defaultValue={p.cctv1 || ''} placeholder="Kamera 1 — mis. EZVIZ, Kamera Gerbang Depan"
+                      onBlur={(e) => { if (e.target.value !== (p.cctv1 || '')) onUpdateProject(p.id, { cctv1: e.target.value.trim() }); }}
+                      className="flex-1 px-2 py-1.5 rounded att-mono text-[11px] outline-none" style={{ background: THEME.concrete, color: THEME.ink }} />
+                    <Video size={13} color={THEME.inkSoft} className="shrink-0" />
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <input type="text" defaultValue={p.cctv2 || ''} placeholder="Kamera 2 — mis. EZVIZ, Kamera Gudang Material"
+                      onBlur={(e) => { if (e.target.value !== (p.cctv2 || '')) onUpdateProject(p.id, { cctv2: e.target.value.trim() }); }}
+                      className="flex-1 px-2 py-1.5 rounded att-mono text-[11px] outline-none" style={{ background: THEME.concrete, color: THEME.ink }} />
+                    <Video size={13} color={THEME.inkSoft} className="shrink-0" />
+                  </div>
+                  {(p.cctv1 || p.cctv2) && (
+                    <p className="att-mono text-[9.5px]" style={{ color: THEME.inkSoft }}>
+                      Buka lewat app kamera merek terkait di HP — kolom ini catatan pengingat, bukan link langsung.
+                    </p>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -3159,6 +5834,12 @@ function RekapProyekTab({ projects, purchases, usage, materials, utangPayments, 
                     {purchaseItems(p).map((it, idx) => (
                       <div key={it.id || idx}>&bull; [{KATEGORI_LABELS[it.kategori] || KATEGORI_LABELS.non_kategori}] {it.materialName}: {it.qty} {it.unit} &times; {formatRupiah(it.price)}</div>
                     ))}
+                    {p.photo?.photo && (
+                      <div className="flex items-center gap-1.5 mt-1.5">
+                        <img src={p.photo.photo} alt="Foto nota" className="w-10 h-10 rounded object-cover" style={{ border: `1px solid ${THEME.line}` }} />
+                        <span className="flex items-center gap-1"><Camera size={10} /> {p.photo.time}</span>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -3287,7 +5968,7 @@ function DashboardTab({ workers, projects, weeks, payments, kasbon, kasbonPaymen
     })
     .filter((x) => x.sisa <= Number(x.material.stokMinimum));
 
-  const upahBelumLunas = buildUpahRows(workers, weeks, projects, payments, kasbon, kasbonPayments, 'all').filter((r) => r.sisa > 0);
+  const upahBelumLunas = buildUpahRows(workers, weeks, projects, payments, kasbon, kasbonPayments, null, 'all').filter((r) => r.sisa > 0);
 
   const today = new Date(new Date().toDateString());
   const proyekTerlambat = projects.filter((p) => p.targetDate && (p.status || 'berjalan') !== 'selesai' && new Date(p.targetDate) < today);
@@ -3308,11 +5989,35 @@ function DashboardTab({ workers, projects, weeks, payments, kasbon, kasbonPaymen
     { label: 'Utang ke Suplier', value: formatRupiah(totalUtangBelumLunas), tab: 'proyek' },
   ];
 
+  const proyekDenganCctv = projects.filter((p) => p.cctv1 || p.cctv2);
+
   return (
     <div className="p-4 pb-24">
       <p className="att-mono text-xs mb-2" style={{ color: THEME.inkSoft }}>
         RINGKASAN &middot; {now.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
       </p>
+      {proyekDenganCctv.length > 0 && (
+        <div className="mb-5">
+          <p className="att-mono text-xs mb-2" style={{ color: THEME.inkSoft }}>KAMERA CCTV PROYEK</p>
+          <div className="space-y-1.5">
+            {proyekDenganCctv.map((p) => (
+              <div key={p.id} className="p-2.5 rounded-lg" style={{ background: THEME.charcoal }}>
+                <p className="att-body text-sm font-semibold mb-1" style={{ color: THEME.paper }}>{p.name}</p>
+                {p.cctv1 && (
+                  <p className="att-mono text-[11px] flex items-center gap-1.5" style={{ color: THEME.amberSoft }}>
+                    <Video size={11} /> {p.cctv1}
+                  </p>
+                )}
+                {p.cctv2 && (
+                  <p className="att-mono text-[11px] flex items-center gap-1.5 mt-0.5" style={{ color: THEME.amberSoft }}>
+                    <Video size={11} /> {p.cctv2}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-2 mb-5">
         {cards.map((c) => (
           <button key={c.label} type="button" onClick={() => setTab(c.tab)}
@@ -3376,6 +6081,11 @@ export default function App() {
   const [utangPayments, setUtangPayments] = useState([]);
   const [peralatan, setPeralatan] = useState([]);
   const [peralatanUsage, setPeralatanUsage] = useState([]);
+  const [progressPhotos, setProgressPhotos] = useState([]);
+  const [penawaranList, setPenawaranList] = useState([]);
+  const [ahspList, setAhspList] = useState([]);
+  const [klienList, setKlienList] = useState([]);
+  const [clients, setClients] = useState([]);
   const [tab, setTab] = useState('dashboard');
   const [showBackup, setShowBackup] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -3435,11 +6145,11 @@ export default function App() {
     setLoading(true);
     let ok = true;
     try {
-      const [w, wk, pr, pay, ev, ka, kp, mat, sup, pu, us, up, pe, peu, compSnap] = await Promise.all([
+      const [w, wk, pr, pay, ev, ka, kp, mat, sup, pu, us, up, pe, peu, pgf, pnw, ahsp, klien, compSnap] = await Promise.all([
         fetchAll('workers'), fetchAll('weeks'), fetchAll('projects'), fetchAll('payments'),
         fetchAll('evidence'), fetchAll('kasbon'), fetchAll('kasbonPayments'), fetchAll('materials'),
         fetchAll('suppliers'), fetchAll('purchases'), fetchAll('usage'), fetchAll('utangPayments'),
-        fetchAll('peralatan'), fetchAll('peralatanUsage'),
+        fetchAll('peralatan'), fetchAll('peralatanUsage'), fetchAll('progressPhotos'), fetchAll('penawaran'), fetchAll('ahspMaster'), fetchAll('klien'),
         getDocs(collection(db, 'companyProfile')),
       ]);
       setWorkers(w);
@@ -3458,6 +6168,10 @@ export default function App() {
       setUtangPayments(up);
       setPeralatan(pe);
       setPeralatanUsage(peu);
+      setProgressPhotos(pgf);
+      setPenawaranList(pnw);
+      setAhspList(ahsp);
+      setKlienList(klien);
       const compDoc = compSnap.docs.find((d) => d.id === 'main');
       const compRow = compDoc ? compDoc.data() : { name: '', tagline: '', address: '', phone: '' };
       setCompany(compRow);
@@ -3521,6 +6235,10 @@ export default function App() {
   const utangPaymentCrud = makeCrud('utangPayments', setUtangPayments);
   const peralatanCrud = makeCrud('peralatan', setPeralatan);
   const peralatanUsageCrud = makeCrud('peralatanUsage', setPeralatanUsage);
+  const progressPhotoCrud = makeCrud('progressPhotos', setProgressPhotos);
+  const penawaranCrud = makeCrud('penawaran', setPenawaranList);
+  const ahspCrud = makeCrud('ahspMaster', setAhspList);
+  const klienCrud = makeCrud('klien', setKlienList);
 
   const handleLogin = async (username, password) => {
     setLoginError('');
@@ -3652,6 +6370,17 @@ export default function App() {
 
   const handleAddPeralatanUsage = peralatanUsageCrud.add;
   const handleDeletePeralatanUsage = peralatanUsageCrud.remove;
+  const handleAddProgressPhoto = progressPhotoCrud.add;
+  const handleDeleteProgressPhoto = progressPhotoCrud.remove;
+  const handleAddPenawaran = penawaranCrud.add;
+  const handleUpdatePenawaran = penawaranCrud.update;
+  const handleDeletePenawaran = penawaranCrud.remove;
+  const handleAddAhsp = ahspCrud.add;
+  const handleUpdateAhsp = ahspCrud.update;
+  const handleDeleteAhsp = ahspCrud.remove;
+  const handleAddKlien = klienCrud.add;
+  const handleUpdateKlien = klienCrud.update;
+  const handleDeleteKlien = klienCrud.remove;
 
   const handleAddUsage = usageCrud.add;
   const handleDeleteUsage = usageCrud.remove;
@@ -3859,6 +6588,7 @@ export default function App() {
           payments={payments}
           kasbon={kasbon}
           kasbonPayments={kasbonPayments}
+          evidence={evidence}
           onAddPayment={handleAddPayment}
           onDeletePayment={handleDeletePayment}
         />
@@ -3878,6 +6608,44 @@ export default function App() {
           kasbonPayments={kasbonPayments}
           onUpdateProject={handleUpdateProject}
           peralatanUsage={peralatanUsage}
+        />
+      )}
+      {tab === 'progres' && (
+        <ProgresFotoTab
+          projects={projects}
+          entries={progressPhotos}
+          onAdd={handleAddProgressPhoto}
+          onDelete={handleDeleteProgressPhoto}
+          penawaranList={penawaranList}
+        />
+      )}
+      {tab === 'penawaran' && (
+        <PenawaranTab
+          penawaranList={penawaranList}
+          onAdd={handleAddPenawaran}
+          onUpdate={handleUpdatePenawaran}
+          onDelete={handleDeletePenawaran}
+          ahspList={ahspList}
+          overheadProfit={Number(company.ahspOverheadProfit ?? 15)}
+          projects={projects}
+        />
+      )}
+      {tab === 'ahsp' && (
+        <AhspMasterTab
+          ahspList={ahspList}
+          onAdd={handleAddAhsp}
+          onUpdate={handleUpdateAhsp}
+          onDelete={handleDeleteAhsp}
+          company={company}
+          onSaveCompany={saveCompany}
+        />
+      )}
+      {tab === 'klien' && (
+        <DataKlienTab
+          klienList={klienList}
+          onAdd={handleAddKlien}
+          onUpdate={handleUpdateKlien}
+          onDelete={handleDeleteKlien}
         />
       )}
     </div>
