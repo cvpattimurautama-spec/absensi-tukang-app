@@ -6448,7 +6448,7 @@ export default function App() {
     <div className="flex items-center gap-2 px-4 py-2 att-mono text-xs flex-wrap" style={{ background: '#3A241D', color: '#E8A08F' }}>
       <AlertTriangle size={14} className="shrink-0" />
       <span className="flex-1 min-w-[200px]">
-        Gagal terhubung ke database Supabase. Periksa koneksi internet dan pengaturan VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY di file .env.
+        Gagal terhubung ke database Firestore. Periksa koneksi internet dan pengaturan VITE_FIREBASE_URL/VITE_FIREBASE_ANON_KEY di file .env.
       </span>
       <button type="button" onClick={loadAll} className="px-2 py-1 rounded font-semibold shrink-0" style={{ background: '#E8A08F', color: THEME.charcoal }}>
         Coba Lagi
