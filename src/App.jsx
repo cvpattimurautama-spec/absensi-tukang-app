@@ -118,13 +118,18 @@ function resizeImage(file, maxWidth = 360, quality = 0.55) {
       const img = new Image();
       img.onerror = () => reject(new Error('Gagal memuat gambar'));
       img.onload = () => {
-        const scale = Math.min(1, maxWidth / img.width);
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width * scale;
-        canvas.height = img.height * scale;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL('image/jpeg', quality));
+        try {
+          const scale = Math.min(1, maxWidth / img.width);
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round(img.width * scale));
+          canvas.height = Math.max(1, Math.round(img.height * scale));
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          const dataUrl = canvas.toDataURL('image/jpeg', quality);
+          resolve(dataUrl);
+        } catch (err) {
+          reject(err instanceof Error ? err : new Error('Gagal memproses gambar (ukuran foto mungkin terlalu besar)'));
+        }
       };
       img.src = reader.result;
     };
@@ -176,21 +181,33 @@ function purchaseTotal(p) {
   return purchaseItems(p).reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.price) || 0), 0);
 }
 
-function calcWorkerWeekTotals(worker, weekRecord, dateKeys) {
+function calcWorkerWeekTotals(worker, weekRecord, dateKeys, dateInfos) {
   const keys = (dateKeys && dateKeys.length ? dateKeys : DAYS.map((d) => d));
   let totalHariHadir = 0;
   let hariTambahan = 0;
   let totalJamLembur = 0;
-  keys.forEach((d) => {
+  const dailyDetail = [];
+  keys.forEach((d, idx) => {
     const rec = (weekRecord && weekRecord[d]) || {};
     const status = dayStatus(rec);
-    if (status === 'full') totalHariHadir += 1;
-    else if (status === 'half') totalHariHadir += 0.5;
+    let hariHadirHariItu = 0;
+    if (status === 'full') { totalHariHadir += 1; hariHadirHariItu = 1; }
+    else if (status === 'half') { totalHariHadir += 0.5; hariHadirHariItu = 0.5; }
     const jam = Number(rec.lembur) || 0;
-    if (jam >= 4) {
-      hariTambahan += 1;
-    } else if (jam > 0) {
-      totalJamLembur += jam;
+    let hariTambahanHariItu = 0;
+    let jamSisaHariItu = 0;
+    if (jam > 0) {
+      hariTambahanHariItu = Math.floor(jam / 4);
+      jamSisaHariItu = jam % 4;
+      hariTambahan += hariTambahanHariItu;
+      totalJamLembur += jamSisaHariItu;
+    }
+    if (hariHadirHariItu > 0 || jam > 0) {
+      const info = dateInfos && dateInfos[idx];
+      dailyDetail.push({
+        key: d, label: info?.label || d, dayName: info?.dayName || '',
+        status, hariHadirHariItu, jamLembur: jam, hariTambahanHariItu, jamSisaHariItu,
+      });
     }
   });
   const totalHariBayar = totalHariHadir + hariTambahan;
@@ -206,6 +223,7 @@ function calcWorkerWeekTotals(worker, weekRecord, dateKeys) {
     totalHarianRp,
     totalLemburRp,
     totalUpah: totalHarianRp + totalLemburRp,
+    dailyDetail,
   };
 }
 
@@ -596,7 +614,13 @@ function buildSlipGajiText(row, filterLabel) {
   weekBreakdown.forEach((wk) => {
     lines.push(`${wk.weekLabel} (${wk.projectName})`);
     lines.push(`  ${wk.startDate} s/d ${wk.endDate}`);
-    lines.push(`  ${wk.totalHariBayar} hari, ${wk.totalJamLembur} jam lembur = ${formatRupiah(wk.totalUpah)}`);
+    (wk.dailyDetail || []).forEach((d) => {
+      let ket = '';
+      if (d.hariTambahanHariItu > 0) ket += ` — lembur ${d.jamLembur} jam = +${d.hariTambahanHariItu} hari tambahan`;
+      if (d.jamSisaHariItu > 0) ket += `${ket ? ',' : ' —'} sisa ${d.jamSisaHariItu} jam lembur`;
+      lines.push(`    ${d.label}: ${d.hariHadirHariItu === 1 ? 'Hadir 1 hari' : d.hariHadirHariItu === 0.5 ? 'Hadir 1/2 hari' : 'Tidak hadir'}${ket}`);
+    });
+    lines.push(`  Subtotal: ${wk.totalHariBayar} hari, ${wk.totalJamLembur} jam lembur = ${formatRupiah(wk.totalUpah)}`);
   });
   lines.push('--------------------------------');
   lines.push(`Total Hari Kerja   : ${totalHari}`);
@@ -612,7 +636,12 @@ function buildSlipGajiText(row, filterLabel) {
   workerPayments.forEach((p) => lines.push(`  Upah dibayar ${p.date}: ${formatRupiah(p.amount)}`));
   lines.push(`  Total Diterima: ${formatRupiah(diterima)}`);
   lines.push('================================');
-  lines.push(`SISA UPAH BELUM DIBAYAR: ${formatRupiah(sisa)}`);
+  lines.push('RINGKASAN');
+  lines.push(`  Total Upah          : ${formatRupiah(totalUpah)}`);
+  lines.push(`  Bayar Kasbon        : ${formatRupiah(workerKasbonPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0))}`);
+  lines.push(`  Diterima (cash)     : ${formatRupiah(diterima)}`);
+  lines.push(`  Sisa Kasbon         : ${formatRupiah(totalKasbon)}`);
+  lines.push(`  Sisa Upah Belum Dibayar: ${formatRupiah(sisa)}`);
   lines.push('================================');
   lines.push('', 'Diterima oleh,', '', '', `(${worker.name})`);
   return lines.join('\n');
@@ -620,7 +649,14 @@ function buildSlipGajiText(row, filterLabel) {
 
 function buildSlipGajiHtml(row, filterLabel, thermal) {
   const { worker, totalUpah, totalHari, totalJamLembur, diterima, totalKasbon, sisa, workerPayments, workerKasbon, workerKasbonPayments, weekBreakdown, evidenceFilled, evidenceExpected } = row;
-  const workRows = weekBreakdown.map((wk) => `<tr><td>${escapeHtml(wk.weekLabel)}</td><td>${escapeHtml(wk.projectName)}</td><td>${escapeHtml(wk.startDate)} s/d ${escapeHtml(wk.endDate)}</td><td>${wk.totalHariBayar}</td><td>${wk.totalJamLembur}</td><td>${formatRupiah(wk.totalUpah)}</td></tr>`).join('');
+  const dailyRows = (wk) => (wk.dailyDetail || []).map((d) => {
+    let ket = '';
+    if (d.hariTambahanHariItu > 0) ket += `lembur ${d.jamLembur}j = +${d.hariTambahanHariItu} hari`;
+    if (d.jamSisaHariItu > 0) ket += `${ket ? ', ' : ''}sisa ${d.jamSisaHariItu} jam lembur`;
+    return `<tr><td style="padding-left:16px;font-size:0.9em;">${escapeHtml(d.label)}</td><td style="font-size:0.9em;">${d.hariHadirHariItu === 1 ? 'Hadir' : d.hariHadirHariItu === 0.5 ? 'Hadir 1/2' : '-'}</td><td colspan="4" style="font-size:0.9em;">${escapeHtml(ket)}</td></tr>`;
+  }).join('');
+  const workRows = weekBreakdown.map((wk) => `<tr><td>${escapeHtml(wk.weekLabel)}</td><td>${escapeHtml(wk.projectName)}</td><td>${escapeHtml(wk.startDate)} s/d ${escapeHtml(wk.endDate)}</td><td>${wk.totalHariBayar}</td><td>${wk.totalJamLembur}</td><td>${formatRupiah(wk.totalUpah)}</td></tr>${dailyRows(wk)}`).join('');
+  const bayarKasbonTotal = workerKasbonPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
   return `<h2>SLIP GAJI</h2>
     <p><b>${escapeHtml(worker.name)}</b> &nbsp; ${escapeHtml(worker.position || '-')}</p>
     <p>Periode: ${escapeHtml(filterLabel)} &nbsp; Tanggal cetak: ${new Date().toISOString().slice(0, 10)}</p>
@@ -636,9 +672,71 @@ function buildSlipGajiHtml(row, filterLabel, thermal) {
       ${workerPayments.map((p) => `<tr><td>Upah dibayar ${escapeHtml(p.date)}</td><td>${formatRupiah(p.amount)}</td></tr>`).join('')}
       <tr class="bold"><td>Total Diterima</td><td>${formatRupiah(diterima)}</td></tr>
     </tbody></table>
+    <p style="margin-top:10px;"><b>Ringkasan</b></p>
+    <table><tbody>
+      <tr><td>Total Upah</td><td>${formatRupiah(totalUpah)}</td></tr>
+      <tr><td>Bayar Kasbon</td><td>${formatRupiah(bayarKasbonTotal)}</td></tr>
+      <tr><td>Diterima (cash)</td><td>${formatRupiah(diterima)}</td></tr>
+      <tr><td>Sisa Kasbon</td><td>${formatRupiah(totalKasbon)}</td></tr>
+      <tr class="bold"><td>Sisa Upah Belum Dibayar</td><td>${formatRupiah(sisa)}</td></tr>
+    </tbody></table>
     <p class="bold" style="margin-top:10px;font-size:${thermal ? '11px' : '14px'};">SISA UPAH BELUM DIBAYAR: ${formatRupiah(sisa)}</p>
     <p style="margin-top:24px;">Diterima oleh,</p>
     <p style="margin-top:36px;">(${escapeHtml(worker.name)})</p>`;
+}
+
+function DeleteWithPinButton({ label, onDelete, currentUsername, deletePin, className, style }) {
+  const [stage, setStage] = useState('idle'); // idle | confirm | pin
+  const [pinInput, setPinInput] = useState('');
+  const [pinError, setPinError] = useState('');
+  const needsPin = currentUsername !== 'admin' && !!deletePin;
+
+  const startDelete = () => {
+    setPinError('');
+    setStage(needsPin ? 'pin' : 'confirm');
+  };
+
+  const doDelete = async () => {
+    await onDelete();
+    setStage('idle');
+    setPinInput('');
+  };
+
+  const submitPin = () => {
+    if (pinInput.trim() === String(deletePin).trim()) {
+      doDelete();
+    } else {
+      setPinError('PIN salah. Coba lagi atau minta admin.');
+    }
+  };
+
+  if (stage === 'confirm') {
+    return (
+      <button type="button" onClick={doDelete} className={className || 'flex items-center gap-1 px-2.5 py-1.5 rounded att-mono text-[10.5px] font-semibold'} style={style || { background: THEME.rust, color: THEME.paper }}>
+        <Check size={12} /> Yakin?
+      </button>
+    );
+  }
+  if (stage === 'pin') {
+    return (
+      <div className="flex items-center gap-1.5">
+        <input type="password" inputMode="numeric" autoFocus value={pinInput} onChange={(e) => { setPinInput(e.target.value.replace(/[^0-9]/g, '')); setPinError(''); }}
+          placeholder="PIN" className="w-20 px-2 py-1.5 rounded att-mono text-xs outline-none" style={{ background: THEME.concrete, color: THEME.ink, border: `1px solid ${pinError ? THEME.rust : THEME.line}` }} />
+        <button type="button" onClick={submitPin} className="px-2.5 py-1.5 rounded" style={{ background: THEME.rust }}>
+          <Check size={12} color={THEME.paper} />
+        </button>
+        <button type="button" onClick={() => { setStage('idle'); setPinInput(''); setPinError(''); }} className="px-2 py-1.5 rounded" style={{ border: `1px solid ${THEME.line}` }}>
+          <X size={12} color={THEME.inkSoft} />
+        </button>
+        {pinError && <span className="att-mono text-[9.5px]" style={{ color: THEME.rust }}>{pinError}</span>}
+      </div>
+    );
+  }
+  return (
+    <button type="button" onClick={startDelete} className={className || 'flex items-center gap-1 px-2.5 py-1.5 rounded att-mono text-[10.5px] font-semibold'} style={style || { border: `1px solid ${THEME.line}`, color: THEME.rust, background: THEME.paper }}>
+      <Trash2 size={12} /> {label}
+    </button>
+  );
 }
 
 function TextPreviewModal({ title, text, onClose }) {
@@ -767,6 +865,7 @@ function CompanyProfileModal({ company, onSave, onClose }) {
   const [materialsNote, setMaterialsNote] = useState(company.materialsNote || DEFAULT_COMPANY_MATERIALS_NOTE);
   const [logoDataUri, setLogoDataUri] = useState(company.logoDataUri || '');
   const [logoBusy, setLogoBusy] = useState(false);
+  const [deletePin, setDeletePin] = useState(company.deletePin || '');
 
   const handleLogoFile = async (e) => {
     const file = e.target.files?.[0];
@@ -784,9 +883,10 @@ function CompanyProfileModal({ company, onSave, onClose }) {
 
   const handleSave = async () => {
     await onSave({
+      ...company,
       name: name.trim(), tagline: tagline.trim(), address: address.trim(), phone: phone.trim(),
       website: website.trim(), email: email.trim(), services: services.trim(), materialsNote: materialsNote.trim(),
-      logoDataUri,
+      logoDataUri, deletePin: deletePin.trim(),
     });
     onClose();
   };
@@ -842,6 +942,15 @@ function CompanyProfileModal({ company, onSave, onClose }) {
             <p className="att-mono text-[10px] mb-1" style={{ color: THEME.inkSoft }}>Catatan tambahan (opsional)</p>
             <textarea value={materialsNote} onChange={(e) => setMaterialsNote(e.target.value)} rows={2}
               className="w-full px-3 py-2 rounded att-body text-xs outline-none" style={{ background: THEME.concrete, color: THEME.ink }} />
+          </div>
+          <div className="p-2.5 rounded-lg" style={{ background: THEME.concrete }}>
+            <p className="att-mono text-[10px] mb-1" style={{ color: THEME.inkSoft }}>PIN HAPUS (untuk hapus proyek/periode)</p>
+            <input value={deletePin} onChange={(e) => setDeletePin(e.target.value.replace(/[^0-9]/g, ''))} placeholder="mis. 1234 — kosongkan untuk matikan proteksi"
+              inputMode="numeric" maxLength={8}
+              className="w-full px-3 py-2 rounded att-body text-sm outline-none" style={{ background: THEME.paper, color: THEME.ink }} />
+            <p className="att-mono text-[9.5px] mt-1" style={{ color: THEME.inkSoft }}>
+              User bernama "admin" tidak perlu PIN. User lain wajib masukkan PIN ini untuk hapus proyek atau periode absensi.
+            </p>
           </div>
         </div>
         <button type="button" onClick={handleSave}
@@ -946,7 +1055,7 @@ function PrintMenu({ onCopy }) {
   );
 }
 
-function TopBar({ onLogout, onBackup, onProfile, onManageUsers, company, username }) {
+function TopBar({ onLogout, onBackup, onProfile, onManageUsers, onLog, company, username }) {
   return (
     <div className="flex items-center justify-between px-5 py-4 sticky top-0 z-10" style={{ background: THEME.charcoal }}>
       <div className="flex items-center gap-2 min-w-0">
@@ -960,6 +1069,9 @@ function TopBar({ onLogout, onBackup, onProfile, onManageUsers, company, usernam
         <button onClick={onManageUsers} className="att-mono text-xs px-3 py-1.5 rounded" style={{ color: THEME.paper, border: `1px solid ${THEME.line}` }}>
           User
         </button>
+        <button onClick={onLog} className="att-mono text-xs px-3 py-1.5 rounded" style={{ color: THEME.paper, border: `1px solid ${THEME.line}` }}>
+          Log
+        </button>
         <button onClick={onProfile} className="att-mono text-xs px-3 py-1.5 rounded" style={{ color: THEME.paper, border: `1px solid ${THEME.line}` }}>
           Profil
         </button>
@@ -969,6 +1081,47 @@ function TopBar({ onLogout, onBackup, onProfile, onManageUsers, company, usernam
         <button onClick={onLogout} className="att-mono text-xs px-3 py-1.5 rounded" style={{ color: THEME.paper, border: `1px solid ${THEME.line}` }}>
           Keluar
         </button>
+      </div>
+    </div>
+  );
+}
+
+function ActivityLogModal({ logs, onClose }) {
+  const [search, setSearch] = useState('');
+  const sorted = [...logs].sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1));
+  const filtered = sorted.filter((l) =>
+    !search.trim() ||
+    (l.username || '').toLowerCase().includes(search.toLowerCase()) ||
+    (l.action || '').toLowerCase().includes(search.toLowerCase()) ||
+    (l.detail || '').toLowerCase().includes(search.toLowerCase())
+  );
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4" style={{ background: 'rgba(33,29,26,0.7)' }}>
+      <div className="w-full max-w-md rounded-xl p-4 att-body att-punch-anim max-h-[85vh] overflow-y-auto" style={{ background: THEME.paper }}>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-bold text-sm" style={{ color: THEME.ink }}>Log Aktivitas ({logs.length})</h3>
+          <button type="button" onClick={onClose}><X size={18} color={THEME.inkSoft} /></button>
+        </div>
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari user, aksi, atau detail..."
+          className="w-full px-3 py-2 rounded att-body text-sm outline-none mb-3" style={{ background: THEME.concrete, color: THEME.ink }} />
+        <div className="space-y-1.5">
+          {filtered.slice(0, 200).map((l) => (
+            <div key={l.id} className="p-2.5 rounded-lg" style={{ background: THEME.concrete }}>
+              <div className="flex items-center justify-between">
+                <span className="att-mono text-[11px] font-semibold" style={{ color: THEME.ink }}>{l.action}</span>
+                <span className="att-mono text-[9.5px]" style={{ color: THEME.inkSoft }}>{new Date(l.timestamp).toLocaleString('id-ID')}</span>
+              </div>
+              <p className="att-mono text-[10.5px] mt-0.5" style={{ color: THEME.amber }}>{l.username}</p>
+              {l.detail && <p className="att-body text-xs mt-0.5" style={{ color: THEME.inkSoft }}>{l.detail}</p>}
+            </div>
+          ))}
+          {filtered.length === 0 && (
+            <p className="att-body text-sm text-center py-6" style={{ color: THEME.inkSoft }}>Belum ada log aktivitas.</p>
+          )}
+          {filtered.length > 200 && (
+            <p className="att-mono text-[10px] text-center py-2" style={{ color: THEME.inkSoft }}>Menampilkan 200 log terbaru dari {filtered.length}.</p>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -1545,7 +1698,7 @@ function WorkerWeekCard({ worker, weekRecord, dates, onSetStatus, onSetLembur, o
   );
 }
 
-function WeekForm({ projects, workers, onSubmit, onCancel, initial, onAddProject }) {
+function WeekForm({ projects, workers, onSubmit, onCancel, initial, onAddProject, onDelete, currentUsername, deletePin }) {
   const [projectId, setProjectId] = useState(initial?.projectId || '');
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectAddress, setNewProjectAddress] = useState('');
@@ -1555,6 +1708,8 @@ function WeekForm({ projects, workers, onSubmit, onCancel, initial, onAddProject
   const [endDate, setEndDate] = useState(initial?.endDate || '');
   const [workerIds, setWorkerIds] = useState(initial?.workerIds && initial.workerIds.length > 0 ? initial.workerIds : workers.map((w) => w.id));
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [confirmDeleteWeek, setConfirmDeleteWeek] = useState(false);
 
   const toggleWorker = (id) => {
     setWorkerIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -1562,11 +1717,14 @@ function WeekForm({ projects, workers, onSubmit, onCancel, initial, onAddProject
   const allSelected = workers.length > 0 && workerIds.length === workers.length;
 
   const handleSubmit = async () => {
+    if (submitting) return;
+    setSubmitting(true);
     setError('');
     let finalProjectId = projectId;
     if (addingProject || !projectId) {
       if (!newProjectName.trim()) {
         setError('Nama proyek wajib diisi.');
+        setSubmitting(false);
         return;
       }
       const newProject = { id: uid(), name: newProjectName.trim(), address: newProjectAddress.trim() };
@@ -1575,13 +1733,16 @@ function WeekForm({ projects, workers, onSubmit, onCancel, initial, onAddProject
     }
     if (!weekLabel) {
       setError('Label minggu wajib diisi.');
+      setSubmitting(false);
       return;
     }
     if (workerIds.length === 0) {
       setError('Pilih minimal 1 pekerja untuk minggu ini.');
+      setSubmitting(false);
       return;
     }
-    onSubmit({ projectId: finalProjectId, weekLabel: weekLabel.trim(), startDate, endDate, workerIds });
+    await onSubmit({ projectId: finalProjectId, weekLabel: weekLabel.trim(), startDate, endDate, workerIds });
+    setSubmitting(false);
   };
 
   return (
@@ -1652,22 +1813,27 @@ function WeekForm({ projects, workers, onSubmit, onCancel, initial, onAddProject
 
       {error && <p className="text-sm mt-2" style={{ color: THEME.rust }}>{error}</p>}
       <div className="flex gap-2 mt-3">
-        <button type="button" onClick={handleSubmit}
-          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded att-body font-semibold text-sm"
+        <button type="button" onClick={handleSubmit} disabled={submitting}
+          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded att-body font-semibold text-sm disabled:opacity-50"
           style={{ background: THEME.amber, color: THEME.charcoal }}>
-          <Plus size={15} /> {initial ? 'Simpan Perubahan' : 'Buat Minggu'}
+          <Plus size={15} /> {submitting ? 'Menyimpan...' : (initial ? 'Simpan Perubahan' : 'Buat Minggu')}
         </button>
         {onCancel && (
-          <button type="button" onClick={onCancel} className="px-4 py-2 rounded att-body text-sm" style={{ border: `1px solid ${THEME.line}`, color: THEME.inkSoft }}>
+          <button type="button" onClick={onCancel} disabled={submitting} className="px-4 py-2 rounded att-body text-sm disabled:opacity-50" style={{ border: `1px solid ${THEME.line}`, color: THEME.inkSoft }}>
             Batal
           </button>
         )}
       </div>
+      {initial && onDelete && (
+        <div className="mt-2 flex justify-end">
+          <DeleteWithPinButton label="Hapus Periode Ini" onDelete={() => onDelete(initial.id)} currentUsername={currentUsername} deletePin={deletePin} />
+        </div>
+      )}
     </div>
   );
 }
 
-function AbsensiMingguanTab({ workers, weeks, projects, onCreateWeek, onUpdateWeek, onAddProject, onUpdateWeekRecord, evidence, onSaveEvidence }) {
+function AbsensiMingguanTab({ workers, weeks, projects, onCreateWeek, onUpdateWeek, onDeleteWeek, onAddProject, onUpdateWeekRecord, evidence, onSaveEvidence, currentUsername, deletePin }) {
   const [activeWeekId, setActiveWeekId] = useState(weeks[0]?.id || null);
   const [showNewWeek, setShowNewWeek] = useState(weeks.length === 0);
   const [editingWeek, setEditingWeek] = useState(false);
@@ -1697,6 +1863,12 @@ function AbsensiMingguanTab({ workers, weeks, projects, onCreateWeek, onUpdateWe
   const handleEditSave = (data) => {
     onUpdateWeek(activeWeek.id, data);
     setEditingWeek(false);
+  };
+
+  const handleDeleteThisWeek = async (weekId) => {
+    await onDeleteWeek(weekId);
+    setEditingWeek(false);
+    setActiveWeekId(null);
   };
 
   const grandTotal = activeWeek
@@ -1761,6 +1933,9 @@ function AbsensiMingguanTab({ workers, weeks, projects, onCreateWeek, onUpdateWe
           initial={activeWeek}
           onSubmit={handleEditSave}
           onCancel={() => setEditingWeek(false)}
+          onDelete={handleDeleteThisWeek}
+          currentUsername={currentUsername}
+          deletePin={deletePin}
         />
       )}
 
@@ -1861,8 +2036,9 @@ function buildUpahRows(workers, weeks, projects, payments, kasbon, kasbonPayment
     let evidenceExpected = 0;
     const weekBreakdown = filteredWeeks
       .map((week) => {
-        const dateKeys = getWeekDates(week).map((d) => d.key);
-        const totals = calcWorkerWeekTotals(w, week.records[w.id], dateKeys);
+        const dateInfos = getWeekDates(week);
+        const dateKeys = dateInfos.map((d) => d.key);
+        const totals = calcWorkerWeekTotals(w, week.records[w.id], dateKeys, dateInfos);
         const project = projects.find((p) => p.id === week.projectId);
         const dayMap = (evidence && evidence[`${week.id}:${w.id}`]) || {};
         dateKeys.forEach((day) => {
@@ -1885,14 +2061,15 @@ function buildUpahRows(workers, weeks, projects, payments, kasbon, kasbonPayment
     const totalKasbonDiberi = workerKasbon.reduce((s, k) => s + (Number(k.amount) || 0), 0);
     const totalKasbonDibayar = workerKasbonPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
     const totalKasbon = totalKasbonDiberi - totalKasbonDibayar; // sisa kasbon yang belum dilunasi
-    const sisa = totalUpah - diterima - totalKasbon;
+    const sisa = totalUpah - diterima; // upah belum dibayar TIDAK otomatis dipotong kasbon - pelunasan kasbon dicatat terpisah, boleh dicicil
     return { worker: w, totalUpah, totalHari, totalJamLembur, diterima, totalKasbon, sisa, workerPayments, workerKasbon, workerKasbonPayments, weekBreakdown, evidenceFilled, evidenceExpected };
   });
 }
 
-function RekapUpahTab({ workers, weeks, projects, payments, kasbon, kasbonPayments, evidence, onAddPayment, onDeletePayment }) {
+function RekapUpahTab({ workers, weeks, projects, payments, kasbon, kasbonPayments, evidence, onAddPayment, onDeletePayment, onAddKasbonPayment }) {
   const [payFormFor, setPayFormFor] = useState(null);
   const [payAmount, setPayAmount] = useState('');
+  const [payKasbonAmount, setPayKasbonAmount] = useState('');
   const [expanded, setExpanded] = useState(null);
   const [showTextPreview, setShowTextPreview] = useState(false);
   const [filter, setFilter] = useState('all'); // 'all' | 'project:<id>' | 'week:<id>'
@@ -1909,10 +2086,14 @@ function RekapUpahTab({ workers, weeks, projects, payments, kasbon, kasbonPaymen
 
   const submitPayment = async (workerId) => {
     const amount = Number(payAmount.replace(/[^0-9]/g, '')) || 0;
-    if (amount <= 0) return;
-    await onAddPayment({ id: uid(), workerId, amount, date: new Date().toISOString().slice(0, 10) });
+    const kasbonAmount = Number(payKasbonAmount.replace(/[^0-9]/g, '')) || 0;
+    if (amount <= 0 && kasbonAmount <= 0) return;
+    const today = new Date().toISOString().slice(0, 10);
+    if (amount > 0) await onAddPayment({ id: uid(), workerId, amount, date: today });
+    if (kasbonAmount > 0) await onAddKasbonPayment({ id: uid(), workerId, amount: kasbonAmount, date: today, note: 'Dipotong saat gajian' });
     setPayFormFor(null);
     setPayAmount('');
+    setPayKasbonAmount('');
   };
 
   const filterLabel = () => {
@@ -2035,28 +2216,44 @@ function RekapUpahTab({ workers, weeks, projects, payments, kasbon, kasbonPaymen
               />
             )}
 
-            <div className="flex items-center gap-2 mt-2">
+            <div className="mt-2">
               {payFormFor === worker.id ? (
-                <>
-                  <input
-                    autoFocus
-                    value={payAmount}
-                    onChange={(e) => setPayAmount(e.target.value.replace(/[^0-9]/g, ''))}
-                    placeholder="Jumlah dibayar (Rp)"
-                    inputMode="numeric"
-                    className="flex-1 px-2 py-1.5 rounded att-mono text-xs outline-none"
-                    style={{ background: THEME.concrete, color: THEME.ink, border: `1px solid ${THEME.line}` }}
-                  />
-                  <button type="button" onClick={() => submitPayment(worker.id)} className="px-2.5 py-1.5 rounded" style={{ background: THEME.amber }}>
-                    <Check size={13} color={THEME.charcoal} />
-                  </button>
-                  <button type="button" onClick={() => { setPayFormFor(null); setPayAmount(''); }} className="px-2.5 py-1.5 rounded" style={{ border: `1px solid ${THEME.line}` }}>
-                    <X size={13} color={THEME.inkSoft} />
-                  </button>
-                </>
+                <div className="space-y-1.5">
+                  <div>
+                    <p className="att-mono text-[10px] mb-1" style={{ color: THEME.inkSoft }}>Bayar Kasbon (opsional, boleh dicicil — sisa kasbon: {formatRupiah(totalKasbon)})</p>
+                    <input
+                      value={payKasbonAmount}
+                      onChange={(e) => setPayKasbonAmount(e.target.value.replace(/[^0-9]/g, ''))}
+                      placeholder="Jumlah bayar kasbon (Rp), kosongkan kalau tidak ada"
+                      inputMode="numeric"
+                      className="w-full px-2 py-1.5 rounded att-mono text-xs outline-none"
+                      style={{ background: THEME.concrete, color: THEME.ink, border: `1px solid ${THEME.line}` }}
+                    />
+                  </div>
+                  <div>
+                    <p className="att-mono text-[10px] mb-1" style={{ color: THEME.inkSoft }}>Upah Diterima (cash yang benar-benar diberikan)</p>
+                    <div className="flex items-center gap-2">
+                      <input
+                        autoFocus
+                        value={payAmount}
+                        onChange={(e) => setPayAmount(e.target.value.replace(/[^0-9]/g, ''))}
+                        placeholder="Jumlah upah diterima (Rp)"
+                        inputMode="numeric"
+                        className="flex-1 px-2 py-1.5 rounded att-mono text-xs outline-none"
+                        style={{ background: THEME.concrete, color: THEME.ink, border: `1px solid ${THEME.line}` }}
+                      />
+                      <button type="button" onClick={() => submitPayment(worker.id)} className="px-2.5 py-1.5 rounded shrink-0" style={{ background: THEME.amber }}>
+                        <Check size={13} color={THEME.charcoal} />
+                      </button>
+                      <button type="button" onClick={() => { setPayFormFor(null); setPayAmount(''); setPayKasbonAmount(''); }} className="px-2.5 py-1.5 rounded shrink-0" style={{ border: `1px solid ${THEME.line}` }}>
+                        <X size={13} color={THEME.inkSoft} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
               ) : (
-                <>
-                  <button type="button" onClick={() => { setPayFormFor(worker.id); setPayAmount(''); }}
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => { setPayFormFor(worker.id); setPayAmount(''); setPayKasbonAmount(''); }}
                     className="flex items-center gap-1 px-2.5 py-1.5 rounded att-mono text-xs font-semibold"
                     style={{ background: THEME.amber, color: THEME.charcoal }}>
                     <Plus size={12} /> Tambah Pembayaran
@@ -2067,7 +2264,7 @@ function RekapUpahTab({ workers, weeks, projects, payments, kasbon, kasbonPaymen
                       {expanded === worker.id ? 'Sembunyikan riwayat' : 'Lihat riwayat'}
                     </button>
                   )}
-                </>
+                </div>
               )}
             </div>
 
@@ -2795,10 +2992,16 @@ function BelanjaTab({ materials, onAddMaterial, onUpdateMaterial, onDeleteMateri
       <div className="flex items-center justify-between mb-2">
         <p className="att-mono text-xs" style={{ color: THEME.inkSoft }}>{purchases.length} CATATAN BELANJA</p>
         {purchases.length > 0 && (
-          <PrintMenu
-            onPrint={(thermal) => openPrintDocument('Belanja Harian', buildBelanjaHtml(sorted, total, thermal), thermal)}
-            onCopy={() => setShowTextPreview(true)}
-          />
+          <div className="flex items-center gap-1.5">
+            <button type="button" onClick={() => exportBelanjaPDF(sorted, total)}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded att-mono text-[11px] font-semibold" style={{ border: `1px solid ${THEME.line}`, color: THEME.ink, background: THEME.paper }}>
+              <Save size={12} /> PDF
+            </button>
+            <PrintMenu
+              onPrint={(thermal) => openPrintDocument('Belanja Harian', buildBelanjaHtml(sorted, total, thermal), thermal)}
+              onCopy={() => setShowTextPreview(true)}
+            />
+          </div>
         )}
       </div>
       {showTextPreview && <TextPreviewModal title="Belanja Harian" text={text} onClose={() => setShowTextPreview(false)} />}
@@ -3363,6 +3566,40 @@ function exportIdCardPDF(worker) {
   }
 }
 
+function exportBelanjaPDF(sorted, total) {
+  try {
+    const doc = new window.jspdf.jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+    let y = pdfAddHeader(doc, 'Belanja Harian Material', `${sorted.length} nota`);
+
+    const body = [];
+    sorted.forEach((p, i) => {
+      const items = purchaseItems(p);
+      items.forEach((it, j) => {
+        body.push([
+          j === 0 ? String(i + 1) : '', j === 0 ? p.date : '', j === 0 ? (p.noNota || '-') : '', j === 0 ? (p.supplierName || '-') : '',
+          it.materialName, `${it.qty} ${it.unit || ''}`, formatRupiah(it.price), formatRupiah((Number(it.qty) || 0) * (Number(it.price) || 0)),
+        ]);
+      });
+    });
+    doc.autoTable({
+      startY: y, margin: { left: 40, right: 40 },
+      head: [['No', 'Tanggal', 'No. Nota', 'Suplier', 'Material', 'Qty', 'Harga', 'Subtotal']],
+      body,
+      foot: [['', '', '', '', '', '', 'TOTAL', formatRupiah(total)]],
+      styles: { fontSize: 7.5, textColor: PDF_INK },
+      headStyles: { fillColor: PDF_NAVY, textColor: [242, 236, 217] },
+      footStyles: { fillColor: [241, 236, 221], textColor: PDF_NAVY, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [250, 248, 241] },
+    });
+
+    pdfFinishAllPages(doc);
+    doc.save('belanja-harian.pdf');
+  } catch (err) {
+    console.error('Gagal ekspor PDF Belanja:', err);
+    alert('Gagal membuat file PDF. Coba lagi, atau gunakan tombol Cetak.');
+  }
+}
+
 function exportRekapUpahPDF(rows, grand, filterLabel) {
   try {
     const doc = new window.jspdf.jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
@@ -3404,10 +3641,12 @@ function exportSlipGajiPDF(row, filterLabel) {
     y += 34;
 
     // Ringkasan
+    const bayarKasbonTotal = workerKasbonPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
     const summary = [
       ['Hari Kerja', `${totalHari} hari`], ['Jam Lembur', `${totalJamLembur} jam`],
-      ['Total Upah', formatRupiah(totalUpah)], ['Sudah Diterima', formatRupiah(diterima)],
-      ['Sisa Kasbon', formatRupiah(totalKasbon)], ['Sisa Upah', formatRupiah(sisa)],
+      ['Total Upah', formatRupiah(totalUpah)], ['Bayar Kasbon', formatRupiah(bayarKasbonTotal)],
+      ['Diterima (cash)', formatRupiah(diterima)],
+      ['Sisa Kasbon', formatRupiah(totalKasbon)], ['Sisa Upah Belum Dibayar', formatRupiah(sisa)],
     ];
     if (evidenceExpected > 0) summary.push(['Bukti Foto Kehadiran', `${evidenceFilled}/${evidenceExpected} periode`]);
     doc.autoTable({
@@ -3434,6 +3673,17 @@ function exportSlipGajiPDF(row, filterLabel) {
 
     section('Rincian per Periode', ['Periode', 'Proyek', 'Hari', 'Lembur (j)', 'Upah'],
       weekBreakdown.map((wk) => [wk.weekLabel, wk.projectName, String(wk.totalHariBayar), String(wk.totalJamLembur), formatRupiah(wk.totalUpah)]));
+
+    const dailyRows = [];
+    weekBreakdown.forEach((wk) => {
+      (wk.dailyDetail || []).forEach((d) => {
+        let ket = d.hariHadirHariItu === 1 ? 'Hadir' : d.hariHadirHariItu === 0.5 ? 'Hadir 1/2 hari' : '-';
+        if (d.hariTambahanHariItu > 0) ket += ` — lembur ${d.jamLembur}j = +${d.hariTambahanHariItu} hari`;
+        else if (d.jamSisaHariItu > 0) ket += ` — lembur ${d.jamSisaHariItu} jam`;
+        dailyRows.push([d.label, ket]);
+      });
+    });
+    section('Rincian Harian', ['Tanggal', 'Keterangan'], dailyRows);
 
     section('Riwayat Pembayaran Upah', ['Tanggal', 'Jumlah'],
       workerPayments.map((p) => [p.date, formatRupiah(p.amount)]));
@@ -5521,10 +5771,11 @@ function ProgresFotoTab({ projects, entries, onAdd, onDelete, penawaranList }) {
   );
 }
 
-function RekapProyekTab({ projects, purchases, usage, materials, utangPayments, onAddUtangPayment, workers, weeks, payments, kasbon, kasbonPayments, onUpdateProject, peralatanUsage }) {
+function RekapProyekTab({ projects, purchases, usage, materials, utangPayments, onAddUtangPayment, workers, weeks, payments, kasbon, kasbonPayments, onUpdateProject, onDeleteProject, peralatanUsage, currentUsername, deletePin }) {
   const [showTextPreview, setShowTextPreview] = useState(false);
   const [showTablePreview, setShowTablePreview] = useState(false);
   const [showKelolaProyek, setShowKelolaProyek] = useState(false);
+  const [confirmDeleteProject, setConfirmDeleteProject] = useState(null);
   const [openNota, setOpenNota] = useState(null); // gudangId sedang buka riwayat nota
   const [openStok, setOpenStok] = useState(null); // gudangId sedang buka riwayat stok
   const [openPeralatanUsage, setOpenPeralatanUsage] = useState(null); // gudangId sedang buka pemakaian peralatan
@@ -5558,10 +5809,20 @@ function RekapProyekTab({ projects, purchases, usage, materials, utangPayments, 
     });
     const totalDibayarUtang = Object.values(perSupplier).reduce((s, x) => s + x.dibayar, 0);
     const totalBelumLunas = totalUtangKotor - totalDibayarUtang;
+    const perKategori = {};
+    gPurchases.forEach((p) => {
+      purchaseItems(p).forEach((it) => {
+        const kat = it.kategori || materials.find((m) => m.id === it.materialId)?.kategori || 'Lainnya';
+        if (!perKategori[kat]) perKategori[kat] = { kategori: kat, total: 0, qty: 0 };
+        perKategori[kat].total += (Number(it.qty) || 0) * (Number(it.price) || 0);
+        perKategori[kat].qty += Number(it.qty) || 0;
+      });
+    });
     return {
       gudang: g, totalBelanja, totalCash, totalUtangKotor, totalBelumLunas,
       supplierList: Object.values(perSupplier).filter((s) => s.sisa > 0 || s.amount > 0),
       notaList: [...gPurchases].sort((a, b) => (a.date < b.date ? 1 : -1)),
+      kategoriList: Object.values(perKategori).sort((a, b) => b.total - a.total),
       count: gPurchases.length,
     };
   }).filter((x) => x.count > 0);
@@ -5672,6 +5933,22 @@ function RekapProyekTab({ projects, purchases, usage, materials, utangPayments, 
                     </p>
                   )}
                 </div>
+                <div className="mt-2">
+                  {(() => {
+                    const linkedPurchases = purchases.filter((pu) => pu.gudangId === p.id).length;
+                    const linkedUsage = usage.filter((u) => u.gudangId === p.id).length;
+                    const linkedWeeks = weeks.filter((w) => w.projectId === p.id).length;
+                    const hasLinked = linkedPurchases > 0 || linkedUsage > 0 || linkedWeeks > 0;
+                    return hasLinked ? (
+                      <p className="att-mono text-[9.5px] mb-1.5 text-right" style={{ color: THEME.amber }}>
+                        ⚠ Terhubung: {linkedWeeks > 0 ? `${linkedWeeks} periode absensi, ` : ''}{linkedPurchases > 0 ? `${linkedPurchases} nota belanja, ` : ''}{linkedUsage > 0 ? `${linkedUsage} catatan pemakaian` : ''} — data itu TIDAK ikut terhapus, cuma jadi tidak terhubung ke proyek manapun.
+                      </p>
+                    ) : null;
+                  })()}
+                  <div className="flex justify-end">
+                    <DeleteWithPinButton label={`Hapus Proyek`} onDelete={() => onDeleteProject(p.id)} currentUsername={currentUsername} deletePin={deletePin} />
+                  </div>
+                </div>
               </div>
             );
           })}
@@ -5721,7 +5998,7 @@ function RekapProyekTab({ projects, purchases, usage, materials, utangPayments, 
       )}
 
       <div className="space-y-2 mb-6">
-        {perGudang.map(({ gudang, totalCash, totalBelumLunas, supplierList, notaList }) => (
+        {perGudang.map(({ gudang, totalCash, totalBelumLunas, supplierList, notaList, kategoriList }) => (
           <div key={gudang.id} className="p-3 rounded-lg" style={{ background: THEME.paper, border: `1px solid ${THEME.line}` }}>
             <p className="att-body font-semibold text-sm mb-2" style={{ color: THEME.ink }}>{gudang.name}</p>
             <div className="grid grid-cols-2 gap-2 att-mono text-xs mb-2">
@@ -5734,6 +6011,18 @@ function RekapProyekTab({ projects, purchases, usage, materials, utangPayments, 
                 Belum Lunas
               </div>
             </div>
+
+            {kategoriList && kategoriList.length > 0 && (
+              <div className="mb-2 p-2 rounded" style={{ background: THEME.concrete }}>
+                <p className="att-mono text-[9.5px] mb-1" style={{ color: THEME.inkSoft }}>RINCIAN PER KATEGORI</p>
+                {kategoriList.map((k) => (
+                  <div key={k.kategori} className="flex justify-between att-mono text-[11px]" style={{ color: THEME.ink }}>
+                    <span className="capitalize">{k.kategori}</span>
+                    <span>{formatRupiah(k.total)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {supplierList.length > 0 && (
               <div className="space-y-1.5 mb-2">
@@ -6063,9 +6352,21 @@ async function fetchAll(collectionName) {
 export default function App() {
   const [loading, setLoading] = useState(false);
   const [persistenceOk, setPersistenceOk] = useState(true);
+  const [isOnline, setIsOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
   const [currentUser, setCurrentUser] = useState(null);
   const [loginError, setLoginError] = useState('');
   const [loginBusy, setLoginBusy] = useState(false);
+
+  useEffect(() => {
+    const goOnline = () => setIsOnline(true);
+    const goOffline = () => setIsOnline(false);
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    return () => {
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
+    };
+  }, []);
 
   const [workers, setWorkers] = useState([]);
   const [weeks, setWeeks] = useState([]);
@@ -6090,6 +6391,8 @@ export default function App() {
   const [showBackup, setShowBackup] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showManageUsers, setShowManageUsers] = useState(false);
+  const [showLog, setShowLog] = useState(false);
+  const [activityLogs, setActivityLogs] = useState([]);
   const [appUsers, setAppUsers] = useState([]);
   const [company, setCompany] = useState({ name: '', tagline: '', address: '', phone: '' });
 
@@ -6189,6 +6492,18 @@ export default function App() {
     if (currentUser) loadAll();
   }, [currentUser, loadAll]);
 
+  useEffect(() => {
+    if (!showLog) return;
+    (async () => {
+      try {
+        const rows = await fetchAll('activityLog');
+        setActivityLogs(rows);
+      } catch (err) {
+        console.error('Gagal memuat log aktivitas:', err.message);
+      }
+    })();
+  }, [showLog]);
+
   // ---- Helper CRUD generik: update state lokal langsung + kirim ke Firestore ----
   function makeCrud(collectionName, setState) {
     return {
@@ -6240,6 +6555,17 @@ export default function App() {
   const ahspCrud = makeCrud('ahspMaster', setAhspList);
   const klienCrud = makeCrud('klien', setKlienList);
 
+  const logActivity = async (username, action, detail) => {
+    try {
+      await setDoc(doc(db, 'activityLog', uid()), {
+        username: username || '-', action, detail: detail || '',
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error('Gagal mencatat log aktivitas:', err.message);
+    }
+  };
+
   const handleLogin = async (username, password) => {
     setLoginError('');
     setLoginBusy(true);
@@ -6250,6 +6576,7 @@ export default function App() {
         const user = { id: match.id, username: match.username };
         setCurrentUser(user);
         localStorage.setItem('tukang_session', JSON.stringify(user));
+        logActivity(user.username, 'Login', 'Berhasil masuk ke aplikasi');
       } else {
         setLoginError('Username atau password salah.');
       }
@@ -6261,6 +6588,7 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    if (currentUser) logActivity(currentUser.username, 'Logout', 'Keluar dari aplikasi');
     setCurrentUser(null);
     localStorage.removeItem('tukang_session');
   };
@@ -6300,9 +6628,19 @@ export default function App() {
 
   const handleAddProject = projectCrud.add;
   const handleUpdateProject = projectCrud.update;
+  const handleDeleteProject = async (id) => {
+    const p = projects.find((x) => x.id === id);
+    await projectCrud.remove(id);
+    logActivity(currentUser?.username, 'Hapus Proyek', p?.name || id);
+  };
 
   const handleCreateWeek = weekCrud.add;
   const handleUpdateWeek = weekCrud.update;
+  const handleDeleteWeek = async (id) => {
+    const w = weeks.find((x) => x.id === id);
+    await weekCrud.remove(id);
+    logActivity(currentUser?.username, 'Hapus Periode Absensi', w?.weekLabel || id);
+  };
   const handleUpdateWeekRecord = async (weekId, workerId, day, patch) => {
     const week = weeks.find((w) => w.id === weekId);
     if (!week) return;
@@ -6312,7 +6650,11 @@ export default function App() {
     await weekCrud.update(weekId, { records: nextRecords });
   };
 
-  const handleAddPayment = paymentCrud.add;
+  const handleAddPayment = async (data) => {
+    await paymentCrud.add(data);
+    const w = workers.find((x) => x.id === data.workerId);
+    logActivity(currentUser?.username, 'Bayar Upah', `${w?.name || data.workerId}: ${formatRupiah(data.amount)}`);
+  };
   const handleDeletePayment = paymentCrud.remove;
 
   const handleSaveEvidence = async (weekId, workerId, day, data) => {
@@ -6329,7 +6671,11 @@ export default function App() {
 
   const handleAddKasbon = kasbonCrud.add;
   const handleDeleteKasbon = kasbonCrud.remove;
-  const handleAddKasbonPayment = kasbonPaymentCrud.add;
+  const handleAddKasbonPayment = async (data) => {
+    await kasbonPaymentCrud.add(data);
+    const w = workers.find((x) => x.id === data.workerId);
+    logActivity(currentUser?.username, 'Bayar Kasbon', `${w?.name || data.workerId}: ${formatRupiah(data.amount)}`);
+  };
   const handleDeleteKasbonPayment = kasbonPaymentCrud.remove;
 
   const handleAddMaterial = materialCrud.add;
@@ -6448,7 +6794,7 @@ export default function App() {
     <div className="flex items-center gap-2 px-4 py-2 att-mono text-xs flex-wrap" style={{ background: '#3A241D', color: '#E8A08F' }}>
       <AlertTriangle size={14} className="shrink-0" />
       <span className="flex-1 min-w-[200px]">
-        Gagal terhubung ke database Firestore. Periksa koneksi internet dan pengaturan VITE_FIREBASE_URL/VITE_FIREBASE_ANON_KEY di file .env.
+        Gagal terhubung ke database Firestore. Periksa koneksi internet dan pengaturan VITE_FIREBASE_* di Environment Variables Vercel.
       </span>
       <button type="button" onClick={loadAll} className="px-2 py-1 rounded font-semibold shrink-0" style={{ background: '#E8A08F', color: THEME.charcoal }}>
         Coba Lagi
@@ -6456,10 +6802,20 @@ export default function App() {
     </div>
   );
 
+  const offlineBanner = !isOnline && persistenceOk && (
+    <div className="flex items-center gap-2 px-4 py-2 att-mono text-xs flex-wrap" style={{ background: THEME.amberSoft, color: THEME.charcoal }}>
+      <AlertTriangle size={14} className="shrink-0" />
+      <span className="flex-1 min-w-[200px]">
+        Mode Offline — internet mati, kamu tetap bisa lihat & input data. Perubahan otomatis tersimpan ke server begitu internet nyala lagi.
+      </span>
+    </div>
+  );
+
   if (!currentUser) {
     return (
       <div>
         {persistenceBanner}
+        {offlineBanner}
         <LoginScreen onLogin={handleLogin} error={loginError} busy={loginBusy} />
       </div>
     );
@@ -6470,11 +6826,13 @@ export default function App() {
       <GlobalStyle />
       <div className="screen-only">
         {persistenceBanner}
+        {offlineBanner}
         <TopBar
           onLogout={handleLogout}
           onBackup={() => setShowBackup(true)}
           onProfile={() => setShowProfile(true)}
           onManageUsers={() => setShowManageUsers(true)}
+          onLog={() => setShowLog(true)}
           company={company}
           username={currentUser?.username}
         />
@@ -6494,6 +6852,10 @@ export default function App() {
           onDelete={handleDeleteAppUser}
           onClose={() => setShowManageUsers(false)}
         />
+      )}
+
+      {showLog && (
+        <ActivityLogModal logs={activityLogs} onClose={() => setShowLog(false)} />
       )}
 
       {showBackup && (
@@ -6529,10 +6891,13 @@ export default function App() {
           projects={projects}
           onCreateWeek={handleCreateWeek}
           onUpdateWeek={handleUpdateWeek}
+          onDeleteWeek={handleDeleteWeek}
           onAddProject={handleAddProject}
           onUpdateWeekRecord={handleUpdateWeekRecord}
           evidence={evidence}
           onSaveEvidence={handleSaveEvidence}
+          currentUsername={currentUser?.username}
+          deletePin={company.deletePin}
         />
       )}
       {tab === 'kasbon' && (
@@ -6591,6 +6956,7 @@ export default function App() {
           evidence={evidence}
           onAddPayment={handleAddPayment}
           onDeletePayment={handleDeletePayment}
+          onAddKasbonPayment={handleAddKasbonPayment}
         />
       )}
       {tab === 'proyek' && (
@@ -6607,7 +6973,10 @@ export default function App() {
           kasbon={kasbon}
           kasbonPayments={kasbonPayments}
           onUpdateProject={handleUpdateProject}
+          onDeleteProject={handleDeleteProject}
           peralatanUsage={peralatanUsage}
+          currentUsername={currentUser?.username}
+          deletePin={company.deletePin}
         />
       )}
       {tab === 'progres' && (
