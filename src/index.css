@@ -1,8 +1,0 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700;9..144,900&family=Work+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-.att-display { font-family: 'Fraunces', serif; font-weight: 700; }
-.att-body { font-family: 'Work Sans', sans-serif; }
-.att-mono { font-family: 'IBM Plex Mono', monospace; }
