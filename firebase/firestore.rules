@@ -73,5 +73,6 @@ service cloud.firestore {
     match /operatorSopir/{docId} { allow read, write: if true; }
     match /sewaAlat/{docId} { allow read, write: if true; }
     match /kontrakSewaAlat/{docId} { allow read, write: if true; }
+    match /penawaranSewaAlat/{docId} { allow read, write: if true; }
   }
 }
