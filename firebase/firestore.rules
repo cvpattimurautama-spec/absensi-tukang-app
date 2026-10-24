@@ -69,6 +69,8 @@ service cloud.firestore {
     match /checklistPekerjaan/{docId} { allow read, write: if true; }
     match /milestoneProyek/{docId} { allow read, write: if true; }
     match /kendalaProyek/{docId} { allow read, write: if true; }
+    match /dokumentasiProyek/{docId} { allow read, write: if true; }
+    match /backupVolume/{docId} { allow read, write: if true; }
     match /alatBerat/{docId} { allow read, write: if true; }
     match /operatorSopir/{docId} { allow read, write: if true; }
     match /sewaAlat/{docId} { allow read, write: if true; }
